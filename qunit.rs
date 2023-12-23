@@ -1,192 +1,5 @@
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
-
-pub trait QInterface {
-    fn set_quantum_state(&mut self, state: &[Complex]);
-    fn get_quantum_state(&self) -> Vec<Complex>;
-    fn set_amplitude(&mut self, perm: u64, amp: Complex);
-    fn set_permutation(&mut self, perm: u64, phase_fac: Complex);
-    fn get_amplitude_or_prob(&self, perm: u64, is_prob: bool) -> Complex;
-    fn prob_base(&self, qubit: usize) -> f64;
-    fn prob(&self, qubit: usize) -> f64;
-    fn prob_all(&self, perm: u64) -> f64;
-    fn prob_all_rdm(&self, round_rz: bool, perm: u64) -> f64;
-    fn sum_sqr_diff(&self, to_compare: &Rc<RefCell<dyn QInterface>>) -> f64;
-    fn expectation_bits_factorized(
-        &self,
-        bits: &[usize],
-        perms: &[u64],
-        offset: u64,
-    ) -> f64;
-    fn expectation_bits_factorized_rdm(
-        &self,
-        round_rz: bool,
-        bits: &[usize],
-        perms: &[u64],
-        offset: u64,
-    ) -> f64;
-    fn update_running_norm(&mut self, norm_thresh: f64);
-    fn normalize_state(&mut self, nrm: f64, norm_thresh: f64, phase_arg: f64);
-    fn finish(&mut self);
-    fn is_finished(&self) -> bool;
-    fn dump(&mut self);
-    fn is_clifford(&self, qubit: usize) -> bool;
-    fn get_unitary_fidelity(&self) -> f64;
-    fn reset_unitary_fidelity(&mut self);
-    fn set_sdrp(&mut self, sdrp: f64);
-    fn clone_qinterface(&self) -> Rc<RefCell<dyn QInterface>>;
-}
-
-pub trait QParity {
-    fn anti_cnot(&mut self, control: usize, target: usize);
-    fn cnot(&mut self, control: usize, target: usize);
-    fn either_iswap(&mut self, qubit1: usize, qubit2: usize, is_inverse: bool);
-    fn iswap(&mut self, qubit1: usize, qubit2: usize);
-    fn iiswap(&mut self, qubit1: usize, qubit2: usize);
-    fn mc_phase(
-        &mut self,
-        controls: &[usize],
-        top_left: Complex,
-        bottom_right: Complex,
-        target: usize,
-    );
-    fn mc_invert(
-        &mut self,
-        controls: &[usize],
-        top_right: Complex,
-        bottom_left: Complex,
-        target: usize,
-    );
-    fn mac_phase(
-        &mut self,
-        controls: &[usize],
-        top_left: Complex,
-        bottom_right: Complex,
-        target: usize,
-    );
-    fn mac_invert(
-        &mut self,
-        controls: &[usize],
-        top_right: Complex,
-        bottom_left: Complex,
-        target: usize,
-    );
-    fn uc_phase(
-        &mut self,
-        controls: &[usize],
-        top_left: Complex,
-        bottom_right: Complex,
-        target: usize,
-        control_perm: u64,
-    );
-    fn uc_invert(
-        &mut self,
-        controls: &[usize],
-        top_right: Complex,
-        bottom_left: Complex,
-        target: usize,
-        control_perm: u64,
-    );
-    fn mtrx(&mut self, mtrx: &[Complex], qubit: usize);
-    fn mc_mtrx(&mut self, controls: &[usize], mtrx: &[Complex], target: usize);
-    fn mac_mtrx(&mut self, controls: &[usize], mtrx: &[Complex], target: usize);
-    fn set_reg(&mut self, start: usize, length: usize, value: u64);
-    fn swap(&mut self, qubit1: usize, qubit2: usize);
-    fn iswap(&mut self, qubit1: usize, qubit2: usize);
-    fn iiswap(&mut self, qubit1: usize, qubit2: usize);
-    fn prob_rdm(&self, qubit: usize) -> f64;
-    fn cprob_rdm(&self, control: usize, target: usize) -> f64;
-    fn acprob_rdm(&self, control: usize, target: usize) -> f64;
-    fn set_amplitude(&mut self, perm: u64, amp: Complex);
-    fn set_permutation(&mut self, perm: u64, phase_fac: Complex);
-    fn compose(&mut self, to_copy: Rc<RefCell<dyn QInterface>>) -> usize;
-    fn decompose(&mut self, start: usize, dest: Rc<RefCell<dyn QInterface>>);
-    fn decompose(&mut self, start: usize, length: usize) -> Rc<RefCell<dyn QInterface>>;
-    fn dispose(&mut self, start: usize, length: usize);
-    fn dispose(&mut self, start: usize, length: usize, disposed_perm: u64);
-    fn phase(&mut self, top_left: Complex, bottom_right: Complex, qubit_index: usize);
-    fn invert(&mut self, top_right: Complex, bottom_left: Complex, qubit_index: usize);
-    fn mcmtrx(&mut self, controls: &[usize], mtrx: &[Complex], target: usize);
-    fn macmtrx(&mut self, controls: &[usize], mtrx: &[Complex], target: usize);
-    fn set_t_injection(&mut self, use_gadget: bool);
-    fn set_reactive_separate(&mut self, is_agg_sep: bool);
-    fn set_device(&mut self, d_id: i64);
-    fn get_device(&self) -> i64;
-    fn parallel_unit_apply(
-        &mut self,
-        fn_ptr: fn(
-            Rc<RefCell<dyn QInterface>>,
-            f64,
-            f64,
-            f64,
-            i64,
-        ) -> bool,
-        param1: f64,
-        param2: f64,
-        param3: f64,
-        param4: i64,
-    ) -> bool;
-    fn entangle_range(&mut self, start: usize, length: usize, is_for_prob: bool) -> Rc<RefCell<dyn QInterface>>;
-    fn entangle_all(&mut self, is_for_prob: bool) -> Rc<RefCell<dyn QInterface>>;
-    fn order_contiguous(&mut self, unit: Rc<RefCell<dyn QInterface>>);
-    fn detach(&mut self, start: usize, length: usize, dest: Option<Rc<RefCell<dyn QInterface>>>);
-    fn phase(&mut self, top_left: Complex, bottom_right: Complex, qubit_index: usize);
-    fn invert(&mut self, top_right: Complex, bottom_left: Complex, qubit_index: usize);
-    fn mcmtrx(&mut self, controls: &[usize], mtrx: &[Complex], target: usize);
-    fn macmtrx(&mut self, controls: &[usize], mtrx: &[Complex], target: usize);
-    fn set_reg(&mut self, start: usize, length: usize, value: u64);
-    fn swap(&mut self, qubit1: usize, qubit2: usize);
-    fn iswap(&mut self, qubit1: usize, qubit2: usize);
-    fn iiswap(&mut self, qubit1: usize, qubit2: usize);
-    fn prob(&self, qubit: usize) -> f64;
-    fn prob_all(&self, perm: u64) -> f64;
-    fn prob_all_rdm(&self, round_rz: bool, perm: u64) -> f64;
-    fn sum_sqr_diff(&self, to_compare: &Rc<RefCell<dyn QInterface>>) -> f64;
-    fn expectation_bits_factorized(
-        &self,
-        bits: &[usize],
-        perms: &[u64],
-        offset: u64,
-    ) -> f64;
-    fn expectation_bits_factorized_rdm(
-        &self,
-        round_rz: bool,
-        bits: &[usize],
-        perms: &[u64],
-        offset: u64,
-    ) -> f64;
-    fn update_running_norm(&mut self, norm_thresh: f64);
-    fn normalize_state(&mut self, nrm: f64, norm_thresh: f64, phase_arg: f64);
-    fn finish(&mut self);
-    fn is_finished(&self) -> bool;
-    fn dump(&mut self);
-    fn is_clifford(&self, qubit: usize) -> bool;
-    fn get_unitary_fidelity(&self) -> f64;
-    fn reset_unitary_fidelity(&mut self);
-    fn set_sdrp(&mut self, sdrp: f64);
-    fn clone_qinterface(&self) -> Rc<RefCell<dyn QInterface>>;
-}
-
-pub struct QEngineShard {
-    pub unit: Option<Rc<RefCell<dyn QInterface>>>,
-    pub pauli_basis: Pauli,
-    pub mapped: usize,
-    pub amp0: Complex,
-    pub amp1: Complex,
-    pub is_phase_dirty: bool,
-    pub is_prob_dirty: bool,
-    pub found: bool,
-}
-
-pub struct QEngineShardMap {
-    pub shards: Vec<QEngineShard>,
-}
-
-pub struct QInterfaceEngine {
-    pub engine: Rc<RefCell<dyn QInterface>>,
-    pub qubit_count: usize,
-}
 
 pub struct QUnit {
     freeze_basis_2_qb: bool,
@@ -194,829 +7,639 @@ pub struct QUnit {
     is_sparse: bool,
     is_reactive_separate: bool,
     use_t_gadget: bool,
-    threshold_qubits: usize,
+    threshold_qubits: i32,
     separability_threshold: f64,
     log_fidelity: f64,
     dev_id: i64,
-    phase_factor: Complex,
+    phase_factor: Complex<f64>,
     shards: QEngineShardMap,
     device_ids: Vec<i64>,
     engines: Vec<QInterfaceEngine>,
 }
 
+pub type QUnitPtr = Rc<RefCell<QUnit>>;
+
 impl QUnit {
     pub fn new(
         eng: Vec<QInterfaceEngine>,
-        q_bit_count: usize,
-        init_state: u64,
-        rgp: Option<Rc<RefCell<dyn QInterface>>>,
-        phase_fac: Complex,
+        q_bit_count: i32,
+        init_state: i64,
+        rgp: qrack_rand_gen_ptr,
+        phase_fac: Complex<f64>,
         do_norm: bool,
         random_global_phase: bool,
         use_host_mem: bool,
         device_id: i64,
         use_hardware_rng: bool,
         use_sparse_state_vec: bool,
-        norm_thresh: f64,
+        norm_thresh: f32,
         dev_ids: Vec<i64>,
-        qubit_threshold: usize,
-        separation_thresh: f64,
-    ) -> Self {
-        Self {
+        qubit_threshold: i32,
+        separation_thresh: f32,
+    ) -> QUnit {
+        QUnit {
             freeze_basis_2_qb: false,
-            use_host_ram: use_host_mem,
-            is_sparse: use_sparse_state_vec,
+            use_host_ram: false,
+            is_sparse: false,
             is_reactive_separate: false,
             use_t_gadget: false,
-            threshold_qubits: qubit_threshold,
-            separability_threshold: separation_thresh,
+            threshold_qubits: 0,
+            separability_threshold: 0.0,
             log_fidelity: 0.0,
-            dev_id: device_id,
-            phase_factor: phase_fac,
-            shards: QEngineShardMap { shards: vec![] },
-            device_ids: dev_ids,
-            engines: eng,
-        }
-    }
-}
-
-impl QInterface for QUnit {
-    fn set_quantum_state(&mut self, state: &[Complex]) {
-        let mut perm = 0;
-        for i in 0..state.len() {
-            self.set_amplitude(perm, state[i]);
-            perm += 1;
+            dev_id: -1,
+            phase_factor: Complex::new(0.0, 0.0),
+            shards: QEngineShardMap::new(),
+            device_ids: Vec::new(),
+            engines: Vec::new(),
         }
     }
 
-    fn get_quantum_state(&self) -> Vec<Complex> {
-        let mut state = vec![];
-        for i in 0..self.shards.shards.len() {
-            let shard = &self.shards.shards[i];
-            if let Some(unit) = &shard.unit {
-                let unit_state = unit.borrow().get_quantum_state();
-                state.extend(unit_state);
-            } else {
-                state.push(shard.amp0);
-                state.push(shard.amp1);
-            }
-        }
-        state
-    }
-
-    fn set_amplitude(&mut self, perm: u64, amp: Complex) {
-        if perm >= self.shards.shards.len() as u64 {
-            panic!("QUnit::SetAmplitude argument out-of-bounds!");
-        }
-        self.entangle_all(false);
-        self.shards.shards[0].unit.as_mut().unwrap().borrow_mut().set_amplitude(perm, amp);
-    }
-
-    fn set_permutation(&mut self, perm: u64, phase_fac: Complex) {
-        if perm >= self.shards.shards.len() as u64 {
-            panic!("QUnit::SetPermutation argument out-of-bounds!");
-        }
-        self.entangle_all(false);
-        self.shards.shards[0].unit.as_mut().unwrap().borrow_mut().set_permutation(perm, phase_fac);
-    }
-
-    fn get_amplitude_or_prob(&self, perm: u64, is_prob: bool) -> Complex {
-        if perm >= self.shards.shards.len() as u64 {
-            panic!("QUnit::GetAmplitudeOrProb argument out-of-bounds!");
-        }
-        let shard = &self.shards.shards[perm as usize];
-        if let Some(unit) = &shard.unit {
-            unit.borrow().get_amplitude_or_prob(perm, is_prob)
-        } else {
-            if is_prob {
-                if perm == 0 {
-                    shard.amp0.norm()
-                } else {
-                    shard.amp1.norm()
-                }
-            } else {
-                if perm == 0 {
-                    shard.amp0
-                } else {
-                    shard.amp1
-                }
-            }
-        }
-    }
-
-    fn prob_base(&self, qubit: usize) -> f64 {
-        if qubit >= self.shards.shards.len() {
-            panic!("QUnit::ProbBase target parameter must be within allocated qubit bounds!");
-        }
-        self.to_perm_basis_prob(qubit);
-        self.prob(qubit)
-    }
-
-    fn prob(&self, qubit: usize) -> f64 {
-        if qubit >= self.shards.shards.len() {
-            panic!("QUnit::Prob target parameter must be within allocated qubit bounds!");
-        }
-        self.to_perm_basis_prob(qubit);
-        self.prob_base(qubit)
-    }
-
-    fn prob_all(&self, perm: u64) -> f64 {
-        self.clamp_prob(self.norm(self.get_amplitude_or_prob(perm, true)))
-    }
-
-    fn prob_all_rdm(&self, round_rz: bool, perm: u64) -> f64 {
-        if let Some(unit) = &self.shards.shards[0].unit {
-            self.order_contiguous(unit.clone());
-            unit.borrow().prob_all_rdm(round_rz, perm)
-        } else {
-            let clone = self.clone_qinterface();
-            let unit = clone.borrow_mut().entangle_all(true);
-            clone.borrow_mut().order_contiguous(unit.clone());
-            unit.borrow().prob_all_rdm(round_rz, perm)
-        }
-    }
-
-    fn sum_sqr_diff(&self, to_compare: &Rc<RefCell<dyn QInterface>>) -> f64 {
-        let to_compare = to_compare.borrow();
-        if self.shards.shards.len() != to_compare.shards.shards.len() {
-            panic!("QUnit::SumSqrDiff() must be called with QUnits of the same size!");
-        }
-        let mut sum = 0.0;
-        for i in 0..self.shards.shards.len() {
-            let shard = &self.shards.shards[i];
-            let to_compare_shard = &to_compare.shards.shards[i];
-            if let Some(unit) = &shard.unit {
-                if let Some(to_compare_unit) = &to_compare_shard.unit {
-                    sum += unit.borrow().sum_sqr_diff(to_compare_unit);
-                } else {
-                    sum += unit.borrow().sum_sqr_diff(to_compare_shard.amp0, to_compare_shard.amp1);
-                }
-            } else {
-                if let Some(to_compare_unit) = &to_compare_shard.unit {
-                    sum += to_compare_unit.borrow().sum_sqr_diff(shard.amp0, shard.amp1);
-                } else {
-                    sum += self.sum_sqr_diff_single(shard.amp0, shard.amp1, to_compare_shard.amp0, to_compare_shard.amp1);
-                }
-            }
-        }
-        sum
-    }
-
-    fn expectation_bits_factorized(
-        &self,
-        bits: &[usize],
-        perms: &[u64],
-        offset: u64,
-    ) -> f64 {
-        self.expectation_factorized(false, false, bits, perms, vec![], offset, false)
-    }
-
-    fn expectation_bits_factorized_rdm(
-        &self,
-        round_rz: bool,
-        bits: &[usize],
-        perms: &[u64],
-        offset: u64,
-    ) -> f64 {
-        self.expectation_factorized(true, false, bits, perms, vec![], offset, round_rz)
-    }
-
-    fn update_running_norm(&mut self, norm_thresh: f64) {
-        for i in 0..self.shards.shards.len() {
-            let shard = &mut self.shards.shards[i];
-            if let Some(unit) = &shard.unit {
-                unit.borrow_mut().update_running_norm(norm_thresh);
-            }
-        }
-    }
-
-    fn normalize_state(&mut self, nrm: f64, norm_thresh: f64, phase_arg: f64) {
-        for i in 0..self.shards.shards.len() {
-            let shard = &mut self.shards.shards[i];
-            if let Some(unit) = &shard.unit {
-                unit.borrow_mut().normalize_state(nrm, norm_thresh, phase_arg);
-            }
-        }
-    }
-
-    fn finish(&mut self) {
-        for i in 0..self.shards.shards.len() {
-            let shard = &mut self.shards.shards[i];
-            if shard.unit.is_none() {
-                if shard.amp1.norm() <= FP_NORM_EPSILON {
-                    shard.unit = Some(self.make_engine(1, 0));
-                } else if shard.amp0.norm() <= FP_NORM_EPSILON {
-                    shard.unit = Some(self.make_engine(1, 1));
-                } else {
-                    let bit_state = [shard.amp0, shard.amp1];
-                    shard.unit = Some(self.make_engine(1, 0));
-                    shard.unit.as_mut().unwrap().borrow_mut().set_quantum_state(&bit_state);
-                }
-            }
-        }
-    }
-
-    fn is_finished(&self) -> bool {
-        for i in 0..self.shards.shards.len() {
-            if let Some(unit) = &self.shards.shards[i].unit {
-                if !unit.borrow().is_finished() {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
-    fn dump(&mut self) {
-        for shard in &mut self.shards.shards {
-            shard.unit = None;
-        }
-    }
-
-    fn is_clifford(&self, qubit: usize) -> bool {
-        self.shards.shards[qubit].is_clifford()
-    }
-
-    fn get_unitary_fidelity(&self) -> f64 {
-        self.log_fidelity.exp()
-    }
-
-    fn reset_unitary_fidelity(&mut self) {
-        self.log_fidelity = 0.0;
-    }
-
-    fn set_sdrp(&mut self, sdrp: f64) {
-        self.separability_threshold = sdrp;
-    }
-
-    fn clone_qinterface(&self) -> Rc<RefCell<dyn QInterface>> {
-        Rc::new(RefCell::new(Self {
-            freeze_basis_2_qb: self.freeze_basis_2_qb,
-            use_host_ram: self.use_host_ram,
-            is_sparse: self.is_sparse,
-            is_reactive_separate: self.is_reactive_separate,
-            use_t_gadget: self.use_t_gadget,
-            threshold_qubits: self.threshold_qubits,
-            separability_threshold: self.separability_threshold,
-            log_fidelity: self.log_fidelity,
-            dev_id: self.dev_id,
-            phase_factor: self.phase_factor,
-            shards: self.shards.clone(),
-            device_ids: self.device_ids.clone(),
-            engines: self.engines.clone(),
-        }))
-    }
-}
-
-impl QParity for QUnit {
-    fn anti_cnot(&mut self, control: usize, target: usize) {
-        self.shards.shards[control].unit.as_mut().unwrap().borrow_mut().anti_cnot(control, target);
-        self.shards.shards[target].unit.as_mut().unwrap().borrow_mut().prob_rdm(target);
-    }
-
-    fn cnot(&mut self, control: usize, target: usize) {
-        self.shards.shards[control].unit.as_mut().unwrap().borrow_mut().cnot(control, target);
-        self.shards.shards[target].unit.as_mut().unwrap().borrow_mut().prob_rdm(target);
-    }
-
-    fn either_iswap(&mut self, qubit1: usize, qubit2: usize, is_inverse: bool) {
-        self.shards.shards[qubit1].unit.as_mut().unwrap().borrow_mut().either_iswap(qubit1, qubit2, is_inverse);
-        self.shards.shards[qubit2].unit.as_mut().unwrap().borrow_mut().prob_rdm(qubit2);
-    }
-
-    fn iswap(&mut self, qubit1: usize, qubit2: usize) {
-        self.shards.shards[qubit1].unit.as_mut().unwrap().borrow_mut().iswap(qubit1, qubit2);
-        self.shards.shards[qubit2].unit.as_mut().unwrap().borrow_mut().prob_rdm(qubit2);
-    }
-
-    fn iiswap(&mut self, qubit1: usize, qubit2: usize) {
-        self.shards.shards[qubit1].unit.as_mut().unwrap().borrow_mut().iiswap(qubit1, qubit2);
-        self.shards.shards[qubit2].unit.as_mut().unwrap().borrow_mut().prob_rdm(qubit2);
-    }
-
-    fn mc_phase(
-        &mut self,
-        controls: &[usize],
-        top_left: Complex,
-        bottom_right: Complex,
-        target: usize,
-    ) {
-        let m = 2usize.pow(controls.len() as u32) - 1;
-        self.shards.shards[controls[0]].unit.as_mut().unwrap().borrow_mut().mc_phase(
-            controls,
-            top_left,
-            bottom_right,
-            target,
-            m as u64,
+    pub fn set_concurrency(&mut self, threads_per_engine: u32) {
+        QInterface::set_concurrency(threads_per_engine);
+        self.parallel_unit_apply(
+            |unit, unused1, unused2, unused3, threads_per_engine| {
+                unit.set_concurrency(threads_per_engine as u32);
+                true
+            },
+            0.0,
+            0.0,
+            0.0,
+            threads_per_engine as i64,
         );
-        self.shards.shards[target].unit.as_mut().unwrap().borrow_mut().prob_rdm(target);
     }
 
-    fn mc_invert(
-        &mut self,
-        controls: &[usize],
-        top_right: Complex,
-        bottom_left: Complex,
-        target: usize,
-    ) {
-        let m = 2usize.pow(controls.len() as u32) - 1;
-        self.shards.shards[controls[0]].unit.as_mut().unwrap().borrow_mut().mc_invert(
-            controls,
-            top_right,
-            bottom_left,
-            target,
-            m as u64,
+    pub fn set_t_injection(&mut self, use_gadget: bool) {
+        self.use_t_gadget = use_gadget;
+        self.parallel_unit_apply(
+            |unit, unused1, unused2, unused3, use_gadget| {
+                unit.set_t_injection(use_gadget != 0);
+                true
+            },
+            0.0,
+            0.0,
+            0.0,
+            if use_gadget { 1 } else { 0 },
         );
-        self.shards.shards[target].unit.as_mut().unwrap().borrow_mut().prob_rdm(target);
     }
 
-    fn mac_phase(
-        &mut self,
-        controls: &[usize],
-        top_left: Complex,
-        bottom_right: Complex,
-        target: usize,
-    ) {
-        self.shards.shards[controls[0]].unit.as_mut().unwrap().borrow_mut().mac_phase(
-            controls,
-            top_left,
-            bottom_right,
-            target,
-        );
-        self.shards.shards[target].unit.as_mut().unwrap().borrow_mut().prob_rdm(target);
+    pub fn set_reactive_separate(&mut self, is_agg_sep: bool) {
+        self.is_reactive_separate = is_agg_sep;
     }
 
-    fn mac_invert(
-        &mut self,
-        controls: &[usize],
-        top_right: Complex,
-        bottom_left: Complex,
-        target: usize,
-    ) {
-        self.shards.shards[controls[0]].unit.as_mut().unwrap().borrow_mut().mac_invert(
-            controls,
-            top_right,
-            bottom_left,
-            target,
-        );
-        self.shards.shards[target].unit.as_mut().unwrap().borrow_mut().prob_rdm(target);
+    pub fn get_reactive_separate(&self) -> bool {
+        self.is_reactive_separate
     }
 
-    fn uc_phase(
-        &mut self,
-        controls: &[usize],
-        top_left: Complex,
-        bottom_right: Complex,
-        target: usize,
-        control_perm: u64,
-    ) {
-        self.shards.shards[controls[0]].unit.as_mut().unwrap().borrow_mut().uc_phase(
-            controls,
-            top_left,
-            bottom_right,
-            target,
-            control_perm,
-        );
-        self.shards.shards[target].unit.as_mut().unwrap().borrow_mut().prob_rdm(target);
+    pub fn get_device(&self) -> i64 {
+        self.dev_id
     }
 
-    fn uc_invert(
-        &mut self,
-        controls: &[usize],
-        top_right: Complex,
-        bottom_left: Complex,
-        target: usize,
-        control_perm: u64,
-    ) {
-        self.shards.shards[controls[0]].unit.as_mut().unwrap().borrow_mut().uc_invert(
-            controls,
-            top_right,
-            bottom_left,
-            target,
-            control_perm,
-        );
-        self.shards.shards[target].unit.as_mut().unwrap().borrow_mut().prob_rdm(target);
-    }
-
-    fn mtrx(&mut self, mtrx: &[Complex], qubit: usize) {
-        self.shards.shards[qubit].unit.as_mut().unwrap().borrow_mut().mtrx(mtrx, qubit);
-        self.shards.shards[qubit].unit.as_mut().unwrap().borrow_mut().prob_rdm(qubit);
-    }
-
-    fn mc_mtrx(&mut self, controls: &[usize], mtrx: &[Complex], target: usize) {
-        let m = 2usize.pow(controls.len() as u32) - 1;
-        self.shards.shards[controls[0]].unit.as_mut().unwrap().borrow_mut().mc_mtrx(
-            controls,
-            mtrx,
-            target,
-            m as u64,
-        );
-        self.shards.shards[target].unit.as_mut().unwrap().borrow_mut().prob_rdm(target);
-    }
-
-    fn mac_mtrx(&mut self, controls: &[usize], mtrx: &[Complex], target: usize) {
-        self.shards.shards[controls[0]].unit.as_mut().unwrap().borrow_mut().mac_mtrx(
-            controls,
-            mtrx,
-            target,
-        );
-        self.shards.shards[target].unit.as_mut().unwrap().borrow_mut().prob_rdm(target);
-    }
-
-    fn set_reg(&mut self, start: usize, length: usize, value: u64) {
-        self.shards.shards[start].unit.as_mut().unwrap().borrow_mut().set_reg(start, length, value);
-        for i in start..start + length {
-            self.shards.shards[i].unit.as_mut().unwrap().borrow_mut().prob_rdm(i);
+    pub fn prob_rdm(&self, qubit: i32) -> f64 {
+        let shard = &self.shards[qubit as usize];
+        if shard.unit.is_none() {
+            return self.prob(qubit);
         }
+        shard.unit.prob_rdm(qubit)
     }
 
-    fn swap(&mut self, qubit1: usize, qubit2: usize) {
-        self.shards.shards[qubit1].unit.as_mut().unwrap().borrow_mut().swap(qubit1, qubit2);
-        self.shards.shards[qubit2].unit.as_mut().unwrap().borrow_mut().prob_rdm(qubit2);
-    }
-
-    fn iswap(&mut self, qubit1: usize, qubit2: usize) {
-        self.shards.shards[qubit1].unit.as_mut().unwrap().borrow_mut().iswap(qubit1, qubit2);
-        self.shards.shards[qubit2].unit.as_mut().unwrap().borrow_mut().prob_rdm(qubit2);
-    }
-
-    fn iiswap(&mut self, qubit1: usize, qubit2: usize) {
-        self.shards.shards[qubit1].unit.as_mut().unwrap().borrow_mut().iiswap(qubit1, qubit2);
-        self.shards.shards[qubit2].unit.as_mut().unwrap().borrow_mut().prob_rdm(qubit2);
-    }
-
-    fn prob_rdm(&self, qubit: usize) -> f64 {
-        let shard = &self.shards.shards[qubit];
-        if let Some(unit) = &shard.unit {
-            unit.borrow().prob_rdm(qubit)
-        } else {
-            self.prob(qubit)
-        }
-    }
-
-    fn cprob_rdm(&self, control: usize, target: usize) -> f64 {
+    pub fn c_prob_rdm(&self, control: i32, target: i32) -> f64 {
         self.anti_cnot(control, target);
         let prob = self.prob_rdm(target);
         self.anti_cnot(control, target);
         prob
     }
 
-    fn acprob_rdm(&self, control: usize, target: usize) -> f64 {
+    pub fn ac_prob_rdm(&self, control: i32, target: i32) -> f64 {
         self.cnot(control, target);
         let prob = self.prob_rdm(target);
         self.cnot(control, target);
         prob
     }
 
-    fn set_amplitude(&mut self, perm: u64, amp: Complex) {
-        if perm >= self.shards.shards.len() as u64 {
+    pub fn set_amplitude(&mut self, perm: i64, amp: Complex<f64>) {
+        if perm >= max_q_power {
             panic!("QUnit::SetAmplitude argument out-of-bounds!");
         }
-        self.entangle_all(false);
-        self.shards.shards[0].unit.as_mut().unwrap().borrow_mut().set_amplitude(perm, amp);
+        self.entangle_all();
+        self.shards[0].unit.set_amplitude(perm, amp);
     }
 
-    fn set_permutation(&mut self, perm: u64, phase_fac: Complex) {
-        if perm >= self.shards.shards.len() as u64 {
-            panic!("QUnit::SetPermutation argument out-of-bounds!");
-        }
-        self.entangle_all(false);
-        self.shards.shards[0].unit.as_mut().unwrap().borrow_mut().set_permutation(perm, phase_fac);
+    pub fn compose(&mut self, to_copy: QUnitPtr) -> i32 {
+        self.compose(to_copy, self.qubit_count)
     }
 
-    fn compose(&mut self, to_copy: Rc<RefCell<dyn QInterface>>) -> usize {
-        let to_copy = to_copy.borrow();
-        if self.shards.shards.len() < to_copy.shards.shards.len() {
+    pub fn compose(&mut self, to_copy: QInterfacePtr) -> i32 {
+        self.compose(to_copy.downcast::<QUnitPtr>().unwrap())
+    }
+
+    pub fn compose(&mut self, to_copy: QUnitPtr, start: i32) -> i32 {
+        if start > self.qubit_count {
             panic!("QUnit::Compose start index is out-of-bounds!");
         }
-        let clone = to_copy.clone_qinterface();
-        let start = self.shards.shards.len();
-        self.shards.shards.extend_from_slice(&to_copy.shards.shards);
-        self.set_qubit_count(self.get_qubit_count() + to_copy.get_qubit_count());
+        let clone = to_copy.clone();
+        self.shards.insert(start, clone.shards);
+        self.set_qubit_count(self.qubit_count + to_copy.get_qubit_count());
         start
     }
 
-    fn decompose(&mut self, start: usize, dest: Rc<RefCell<dyn QInterface>>) {
-        let dest = dest.borrow();
-        self.detach(start, dest.get_qubit_count(), Some(dest.clone_qinterface()));
+    pub fn compose(&mut self, to_copy: QInterfacePtr, start: i32) -> i32 {
+        self.compose(to_copy.downcast::<QUnitPtr>().unwrap(), start)
     }
 
-    fn decompose(&mut self, start: usize, length: usize) -> Rc<RefCell<dyn QInterface>> {
-        let dest = self.clone_qinterface();
-        self.detach(start, length, Some(dest.clone_qinterface()));
+    pub fn decompose(&mut self, start: i32, dest: QInterfacePtr) {
+        self.decompose(start, dest.downcast::<QUnitPtr>().unwrap())
+    }
+
+    pub fn decompose(&mut self, start: i32, dest: QUnitPtr) {
+        self.detach(start, dest.get_qubit_count(), dest);
+    }
+
+    pub fn decompose(&mut self, start: i32, length: i32) -> QInterfacePtr {
+        let dest = QUnit::new(
+            self.engines.clone(),
+            length,
+            ZERO_BCI,
+            rand_generator,
+            phase_factor,
+            do_normalize,
+            rand_global_phase,
+            use_host_ram,
+            dev_id,
+            use_rdrand,
+            is_sparse,
+            amplitude_floor as f32,
+            device_ids.clone(),
+            threshold_qubits,
+            separability_threshold as f32,
+        );
+        self.decompose(start, dest);
         dest
     }
 
-    fn dispose(&mut self, start: usize, length: usize) {
+    pub fn dispose(&mut self, start: i32, length: i32) {
         self.detach(start, length, None);
     }
 
-    fn dispose(&mut self, start: usize, length: usize, disposed_perm: u64) {
+    pub fn dispose(&mut self, start: i32, length: i32, disposed_perm: i64) {
         self.detach(start, length, None);
     }
 
-    fn phase(&mut self, top_left: Complex, bottom_right: Complex, qubit_index: usize) {
-        self.shards.shards[qubit_index].unit.as_mut().unwrap().borrow_mut().phase(top_left, bottom_right, qubit_index);
-        self.shards.shards[qubit_index].unit.as_mut().unwrap().borrow_mut().prob_rdm(qubit_index);
+    pub fn z_mask(&mut self, mask: i64) {
+        self.phase_parity(PI_R1, mask);
     }
 
-    fn invert(&mut self, top_right: Complex, bottom_left: Complex, qubit_index: usize) {
-        self.shards.shards[qubit_index].unit.as_mut().unwrap().borrow_mut().invert(top_right, bottom_left, qubit_index);
-        self.shards.shards[qubit_index].unit.as_mut().unwrap().borrow_mut().prob_rdm(qubit_index);
+    pub fn mc_phase(
+        &mut self,
+        controls: Vec<i32>,
+        top_left: Complex<f64>,
+        bottom_right: Complex<f64>,
+        target: i32,
+    ) {
+        let m = 2_i64.pow(controls.len() as u32) - 1;
+        self.uc_phase(controls, top_left, bottom_right, target, m);
     }
 
-    fn mcmtrx(&mut self, controls: &[usize], mtrx: &[Complex], target: usize) {
-        let m = 2usize.pow(controls.len() as u32) - 1;
-        self.shards.shards[controls[0]].unit.as_mut().unwrap().borrow_mut().mcmtrx(
-            controls,
-            mtrx,
-            target,
-            m as u64,
-        );
-        self.shards.shards[target].unit.as_mut().unwrap().borrow_mut().prob_rdm(target);
+    pub fn mc_invert(
+        &mut self,
+        controls: Vec<i32>,
+        top_right: Complex<f64>,
+        bottom_left: Complex<f64>,
+        target: i32,
+    ) {
+        let m = 2_i64.pow(controls.len() as u32) - 1;
+        self.uc_invert(controls, top_right, bottom_left, target, m);
     }
 
-    fn macmtrx(&mut self, controls: &[usize], mtrx: &[Complex], target: usize) {
-        self.shards.shards[controls[0]].unit.as_mut().unwrap().borrow_mut().macmtrx(
-            controls,
-            mtrx,
-            target,
-        );
-        self.shards.shards[target].unit.as_mut().unwrap().borrow_mut().prob_rdm(target);
+    pub fn mac_phase(
+        &mut self,
+        controls: Vec<i32>,
+        top_left: Complex<f64>,
+        bottom_right: Complex<f64>,
+        target: i32,
+    ) {
+        self.uc_phase(controls, top_left, bottom_right, target, 0);
     }
 
-    fn set_reg(&mut self, start: usize, length: usize, value: u64) {
-        self.shards.shards[start].unit.as_mut().unwrap().borrow_mut().set_reg(start, length, value);
-        for i in start..start + length {
-            self.shards.shards[i].unit.as_mut().unwrap().borrow_mut().prob_rdm(i);
+    pub fn mac_invert(
+        &mut self,
+        controls: Vec<i32>,
+        top_right: Complex<f64>,
+        bottom_left: Complex<f64>,
+        target: i32,
+    ) {
+        self.uc_invert(controls, top_right, bottom_left, target, 0);
+    }
+
+    pub fn mc_mtrx(&mut self, controls: Vec<i32>, mtrx: &[Complex<f64>], target: i32) {
+        let m = 2_i64.pow(controls.len() as u32) - 1;
+        self.uc_mtrx(controls, mtrx, target, m);
+    }
+
+    pub fn mac_mtrx(&mut self, controls: Vec<i32>, mtrx: &[Complex<f64>], target: i32) {
+        self.uc_mtrx(controls, mtrx, target, 0);
+    }
+
+    pub fn set_reg(&mut self, start: i32, length: i32, value: i64) {
+        let mut perm = value;
+        for i in 0..length {
+            self.set_qubit(start + i, perm & 1);
+            perm >>= 1;
         }
     }
 
-    fn swap(&mut self, qubit1: usize, qubit2: usize) {
-        self.shards.shards[qubit1].unit.as_mut().unwrap().borrow_mut().swap(qubit1, qubit2);
-        self.shards.shards[qubit2].unit.as_mut().unwrap().borrow_mut().prob_rdm(qubit2);
+    pub fn swap(&mut self, qubit1: i32, qubit2: i32) {
+        if qubit1 >= self.qubit_count {
+            panic!("QUnit::Swap qubit index must be within allocated qubit bounds!");
+        }
+        if qubit2 >= self.qubit_count {
+            panic!("QUnit::Swap qubit index must be within allocated qubit bounds!");
+        }
+        if qubit1 == qubit2 {
+            return;
+        }
+        self.shards.swap(qubit1, qubit2);
     }
 
-    fn iswap(&mut self, qubit1: usize, qubit2: usize) {
-        self.shards.shards[qubit1].unit.as_mut().unwrap().borrow_mut().iswap(qubit1, qubit2);
-        self.shards.shards[qubit2].unit.as_mut().unwrap().borrow_mut().prob_rdm(qubit2);
+    pub fn i_swap(&mut self, qubit1: i32, qubit2: i32) {
+        self.either_i_swap(qubit1, qubit2, false);
     }
 
-    fn iiswap(&mut self, qubit1: usize, qubit2: usize) {
-        self.shards.shards[qubit1].unit.as_mut().unwrap().borrow_mut().iiswap(qubit1, qubit2);
-        self.shards.shards[qubit2].unit.as_mut().unwrap().borrow_mut().prob_rdm(qubit2);
+    pub fn ii_swap(&mut self, qubit1: i32, qubit2: i32) {
+        self.either_i_swap(qubit1, qubit2, true);
     }
 
-    fn prob(&self, qubit: usize) -> f64 {
-        if qubit >= self.shards.shards.len() {
-            panic!("QUnit::Prob target parameter must be within allocated qubit bounds!");
+    pub fn prob(&self, qubit: i32) -> f64 {
+        if qubit >= self.qubit_count {
+            panic!("QUnit::Prob target must be within allocated qubit bounds!");
         }
         self.to_perm_basis_prob(qubit);
         self.prob_base(qubit)
     }
 
-    fn prob_all(&self, perm: u64) -> f64 {
-        self.clamp_prob(self.norm(self.get_amplitude_or_prob(perm, true)))
+    pub fn prob_all(&self, perm: i64) -> f64 {
+        self.clamp_prob(norm(self.get_amplitude_or_prob(perm, true) as f64))
     }
 
-    fn prob_all_rdm(&self, round_rz: bool, perm: u64) -> f64 {
-        if let Some(unit) = &self.shards.shards[0].unit {
-            self.order_contiguous(unit.clone());
-            unit.borrow().prob_all_rdm(round_rz, perm)
-        } else {
-            let clone = self.clone_qinterface();
-            let unit = clone.borrow_mut().entangle_all(true);
-            clone.borrow_mut().order_contiguous(unit.clone());
-            unit.borrow().prob_all_rdm(round_rz, perm)
+    pub fn prob_all_rdm(&self, round_rz: bool, perm: i64) -> f64 {
+        if self.shards[0].unit.is_some() && self.shards[0].unit.get_qubit_count() == self.qubit_count {
+            self.order_contiguous(self.shards[0].unit);
+            return self.shards[0].unit.prob_all_rdm(round_rz, perm);
         }
+        let clone = self.clone();
+        let unit = clone.entangle_all(true);
+        clone.order_contiguous(unit);
+        unit.prob_all_rdm(round_rz, perm)
     }
 
-    fn sum_sqr_diff(&self, to_compare: &Rc<RefCell<dyn QInterface>>) -> f64 {
-        let to_compare = to_compare.borrow();
-        if self.shards.shards.len() != to_compare.shards.shards.len() {
-            panic!("QUnit::SumSqrDiff() must be called with QUnits of the same size!");
-        }
-        let mut sum = 0.0;
-        for i in 0..self.shards.shards.len() {
-            let shard = &self.shards.shards[i];
-            let to_compare_shard = &to_compare.shards.shards[i];
-            if let Some(unit) = &shard.unit {
-                if let Some(to_compare_unit) = &to_compare_shard.unit {
-                    sum += unit.borrow().sum_sqr_diff(to_compare_unit);
-                } else {
-                    sum += unit.borrow().sum_sqr_diff(to_compare_shard.amp0, to_compare_shard.amp1);
-                }
-            } else {
-                if let Some(to_compare_unit) = &to_compare_shard.unit {
-                    sum += to_compare_unit.borrow().sum_sqr_diff(shard.amp0, shard.amp1);
-                } else {
-                    sum += self.sum_sqr_diff_single(shard.amp0, shard.amp1, to_compare_shard.amp0, to_compare_shard.amp1);
-                }
-            }
-        }
-        sum
+    pub fn sum_sqr_diff(&self, to_compare: QInterfacePtr) -> f64 {
+        self.sum_sqr_diff(to_compare.downcast::<QUnitPtr>().unwrap())
     }
 
-    fn expectation_bits_factorized(
+    pub fn expectation_bits_factorized(
         &self,
-        bits: &[usize],
-        perms: &[u64],
-        offset: u64,
+        bits: Vec<i32>,
+        perms: Vec<i64>,
+        offset: i64,
     ) -> f64 {
         self.expectation_factorized(false, false, bits, perms, vec![], offset, false)
     }
 
-    fn expectation_bits_factorized_rdm(
+    pub fn expectation_bits_factorized_rdm(
         &self,
         round_rz: bool,
-        bits: &[usize],
-        perms: &[u64],
-        offset: u64,
+        bits: Vec<i32>,
+        perms: Vec<i64>,
+        offset: i64,
     ) -> f64 {
         self.expectation_factorized(true, false, bits, perms, vec![], offset, round_rz)
     }
 
-    fn update_running_norm(&mut self, norm_thresh: f64) {
-        for i in 0..self.shards.shards.len() {
-            let shard = &mut self.shards.shards[i];
-            if let Some(unit) = &shard.unit {
-                unit.borrow_mut().update_running_norm(norm_thresh);
-            }
-        }
+    pub fn normalize_state(&mut self, nrm: f32, norm_thresh: f32, phase_arg: f64) {
+        let nrm = if nrm == REAL1_DEFAULT_ARG { 0.0 } else { nrm };
+        let norm_thresh = if norm_thresh == REAL1_DEFAULT_ARG {
+            0.0
+        } else {
+            norm_thresh
+        };
+        self.normalize_state(nrm, norm_thresh, phase_arg);
     }
 
-    fn normalize_state(&mut self, nrm: f64, norm_thresh: f64, phase_arg: f64) {
-        for i in 0..self.shards.shards.len() {
-            let shard = &mut self.shards.shards[i];
-            if let Some(unit) = &shard.unit {
-                unit.borrow_mut().normalize_state(nrm, norm_thresh, phase_arg);
-            }
-        }
-    }
-
-    fn finish(&mut self) {
-        for i in 0..self.shards.shards.len() {
-            let shard = &mut self.shards.shards[i];
-            if shard.unit.is_none() {
-                if shard.amp1.norm() <= FP_NORM_EPSILON {
-                    shard.unit = Some(self.make_engine(1, 0));
-                } else if shard.amp0.norm() <= FP_NORM_EPSILON {
-                    shard.unit = Some(self.make_engine(1, 1));
-                } else {
-                    let bit_state = [shard.amp0, shard.amp1];
-                    shard.unit = Some(self.make_engine(1, 0));
-                    shard.unit.as_mut().unwrap().borrow_mut().set_quantum_state(&bit_state);
-                }
-            }
-        }
-    }
-
-    fn is_finished(&self) -> bool {
-        for i in 0..self.shards.shards.len() {
-            if let Some(unit) = &self.shards.shards[i].unit {
-                if !unit.borrow().is_finished() {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
-    fn dump(&mut self) {
-        for shard in &mut self.shards.shards {
+    pub fn dump(&mut self) {
+        for shard in &mut self.shards {
             shard.unit = None;
         }
     }
 
-    fn is_clifford(&self, qubit: usize) -> bool {
-        self.shards.shards[qubit].is_clifford()
+    pub fn is_clifford(&self, qubit: i32) -> bool {
+        self.shards[qubit as usize].is_clifford()
     }
 
-    fn get_unitary_fidelity(&self) -> f64 {
+    pub fn get_unitary_fidelity(&self) -> f64 {
         self.log_fidelity.exp()
     }
 
-    fn reset_unitary_fidelity(&mut self) {
+    pub fn reset_unitary_fidelity(&mut self) {
         self.log_fidelity = 0.0;
     }
 
-    fn set_sdrp(&mut self, sdrp: f64) {
-        self.separability_threshold = sdrp;
+    pub fn set_sdrp(&mut self, sdrp: f32) {
+        self.separability_threshold = sdrp as f64;
     }
 
-    fn clone_qinterface(&self) -> Rc<RefCell<dyn QInterface>> {
-        Rc::new(RefCell::new(Self {
-            freeze_basis_2_qb: self.freeze_basis_2_qb,
-            use_host_ram: self.use_host_ram,
-            is_sparse: self.is_sparse,
-            is_reactive_separate: self.is_reactive_separate,
-            use_t_gadget: self.use_t_gadget,
-            threshold_qubits: self.threshold_qubits,
-            separability_threshold: self.separability_threshold,
-            log_fidelity: self.log_fidelity,
-            dev_id: self.dev_id,
-            phase_factor: self.phase_factor,
-            shards: self.shards.clone(),
-            device_ids: self.device_ids.clone(),
-            engines: self.engines.clone(),
-        }))
-    }
-}
-
-impl QUnit {
-    fn make_engine(&self, length: usize, perm: u64) -> Rc<RefCell<dyn QInterface>> {
-        let engine = self.engines[perm as usize].engine.clone();
-        let mut engine = engine.borrow_mut();
-        engine.set_qubit_count(length);
-        engine
-    }
-
-    fn set_qubit_count(&mut self, qubit_count: usize) {
-        for i in 0..self.shards.shards.len() {
-            let shard = &mut self.shards.shards[i];
-            if let Some(unit) = &shard.unit {
-                unit.borrow_mut().set_qubit_count(qubit_count);
-            }
-        }
-    }
-
-    fn to_perm_basis_prob(&mut self, qubit: usize) {
-        for i in 0..qubit {
-            self.shards.shards[i].unit.as_mut().unwrap().borrow_mut().to_perm_basis_prob(qubit);
-        }
-    }
-
-    fn clamp_prob(&self, prob: f64) -> f64 {
-        if prob < 0.0 {
-            0.0
-        } else if prob > 1.0 {
-            1.0
-        } else {
-            prob
-        }
-    }
-
-    fn norm(&self, amp: Complex) -> f64 {
-        amp.norm()
-    }
-
-    fn sum_sqr_diff_single(
+    fn expectation_factorized(
         &self,
-        amp0: Complex,
-        amp1: Complex,
-        to_compare_amp0: Complex,
-        to_compare_amp1: Complex,
+        is_rdm: bool,
+        is_float: bool,
+        bits: Vec<i32>,
+        perms: Vec<i64>,
+        weights: Vec<f32>,
+        offset: i64,
+        round_rz: bool,
     ) -> f64 {
-        let diff0 = amp0 - to_compare_amp0;
-        let diff1 = amp1 - to_compare_amp1;
-        diff0.norm() + diff1.norm()
-    }
-
-    fn order_contiguous(&mut self, unit: Rc<RefCell<dyn QInterface>>) {
-        let mut unit = unit.borrow_mut();
-        unit.order_contiguous();
-    }
-
-    fn detach(&mut self, start: usize, length: usize, dest: Option<Rc<RefCell<dyn QInterface>>>) {
-        let mut dest = dest;
-        if let Some(dest) = &mut dest {
-            let mut dest = dest.borrow_mut();
-            dest.set_qubit_count(length);
+        if (is_float && weights.len() < bits.len())
+            || (!is_float && perms.len() < bits.len())
+        {
+            panic!("QUnit::ExpectationFactorized() must supply at least as many weights as bits!");
         }
-        for i in start..start + length {
-            let shard = &mut self.shards.shards[i];
-            if let Some(unit) = &shard.unit {
-                if let Some(dest) = &mut dest {
-                    let mut unit = unit.borrow_mut();
-                    unit.detach(0, length, Some(dest.clone_qinterface()));
+        self.throw_if_qb_id_array_is_bad(
+            &bits,
+            self.qubit_count,
+            "QUnit::ExpectationFactorized qubits vector values must be within allocated qubit bounds!",
+        );
+        if self.shards[0].unit.is_some() && self.shards[0].unit.get_qubit_count() == self.qubit_count {
+            self.order_contiguous(self.shards[0].unit);
+            if is_float {
+                if is_rdm {
+                    return self.shards[0].unit.expectation_floats_factorized_rdm(round_rz, &bits, &weights);
                 } else {
-                    let mut unit = unit.borrow_mut();
-                    unit.detach(0, length, None);
+                    return self.shards[0].unit.expectation_floats_factorized(&bits, &weights);
+                }
+            } else {
+                if is_rdm {
+                    return self.shards[0].unit.expectation_bits_factorized_rdm(round_rz, &bits, &perms, offset);
+                } else {
+                    return self.shards[0].unit.expectation_bits_factorized(&bits, &perms, offset);
                 }
             }
         }
-        if let Some(dest) = &mut dest {
-            let mut dest = dest.borrow_mut();
-            dest.finish();
-        }
-        self.shards.shards.drain(start..start + length);
-        self.set_qubit_count(self.get_qubit_count() - length);
-    }
-
-    fn to_perm_basis_prob(&mut self, qubit: usize) {
-        for i in 0..qubit {
-            self.shards.shards[i].unit.as_mut().unwrap().borrow_mut().to_perm_basis_prob(qubit);
-        }
-    }
-
-    fn set_qubit_count(&mut self, qubit_count: usize) {
-        for i in 0..self.shards.shards.len() {
-            let shard = &mut self.shards.shards[i];
-            if let Some(unit) = &shard.unit {
-                unit.borrow_mut().set_qubit_count(qubit_count);
+        let clone = self.clone();
+        let unit = clone.entangle_all(true);
+        clone.order_contiguous(unit);
+        if is_float {
+            if is_rdm {
+                return unit.expectation_floats_factorized_rdm(round_rz, &bits, &weights);
+            } else {
+                return unit.expectation_floats_factorized(&bits, &weights);
+            }
+        } else {
+            if is_rdm {
+                return unit.expectation_bits_factorized_rdm(round_rz, &bits, &perms, offset);
+            } else {
+                return unit.expectation_bits_factorized(&bits, &perms, offset);
             }
         }
     }
+
+    fn entangle_range(&mut self, start: i32, length: i32, is_for_prob: bool) -> QInterfacePtr {
+        let to_ret = self.entangle_range(start, length, is_for_prob);
+        self.order_contiguous(to_ret);
+        to_ret
+    }
+
+    fn entangle_all(&mut self, is_for_prob: bool) -> QInterfacePtr {
+        let to_ret = self.entangle_range(0, self.qubit_count, is_for_prob);
+        self.order_contiguous(to_ret);
+        to_ret
+    }
+
+    fn entangle_in_current_basis(
+        &mut self,
+        first: &mut [i32],
+        last: &mut [i32],
+    ) -> QInterfacePtr {
+        let to_ret = self.entangle_in_current_basis(first, last);
+        self.order_contiguous(to_ret);
+        to_ret
+    }
+
+    fn clamp_shard(&mut self, qubit: i32) {
+        let shard = &mut self.shards[qubit as usize];
+        if !shard.clamp_amps() || shard.unit.is_none() {
+            return;
+        }
+        if shard.amp1.norm() <= FP_NORM_EPSILON {
+            self.log_fidelity += (ONE_R1_F - shard.amp1.norm()).log();
+            self.separate_bit(false, qubit);
+        } else if shard.amp0.norm() <= FP_NORM_EPSILON {
+            self.log_fidelity += (ONE_R1_F - shard.amp0.norm()).log();
+            self.separate_bit(true, qubit);
+        }
+    }
+
+    fn transform_x2x2(&self, mtrx_in: &[Complex<f64>], mtrx_out: &mut [Complex<f64>]) {
+        mtrx_out[0] = (ONE_R1 / 2.0) * (mtrx_in[0] + mtrx_in[1] + mtrx_in[2] + mtrx_in[3]);
+        mtrx_out[1] = (ONE_R1 / 2.0) * (mtrx_in[0] - mtrx_in[1] + mtrx_in[2] - mtrx_in[3]);
+        mtrx_out[2] = (ONE_R1 / 2.0) * (mtrx_in[0] + mtrx_in[1] - mtrx_in[2] - mtrx_in[3]);
+        mtrx_out[3] = (ONE_R1 / 2.0) * (mtrx_in[0] - mtrx_in[1] - mtrx_in[2] + mtrx_in[3]);
+    }
+
+    fn transform_x_invert(
+        &self,
+        top_right: Complex<f64>,
+        bottom_left: Complex<f64>,
+        mtrx_out: &mut [Complex<f64>],
+    ) {
+        mtrx_out[0] = (ONE_R1 / 2.0) * (top_right + bottom_left);
+        mtrx_out[1] = (ONE_R1 / 2.0) * (-top_right + bottom_left);
+        mtrx_out[2] = -mtrx_out[1];
+        mtrx_out[3] = -mtrx_out[0];
+    }
+
+    fn transform_y2x2(&self, mtrx_in: &[Complex<f64>], mtrx_out: &mut [Complex<f64>]) {
+        mtrx_out[0] = (ONE_R1 / 2.0) * (mtrx_in[0] + I_CMPLX * (mtrx_in[1] - mtrx_in[2]) + mtrx_in[3]);
+        mtrx_out[1] = (ONE_R1 / 2.0) * (mtrx_in[0] - I_CMPLX * (mtrx_in[1] + mtrx_in[2]) - mtrx_in[3]);
+        mtrx_out[2] = (ONE_R1 / 2.0) * (mtrx_in[0] + I_CMPLX * (mtrx_in[1] + mtrx_in[2]) - mtrx_in[3]);
+        mtrx_out[3] = (ONE_R1 / 2.0) * (mtrx_in[0] - I_CMPLX * (mtrx_in[1] - mtrx_in[2]) + mtrx_in[3]);
+    }
+
+    fn transform_y_invert(
+        &self,
+        top_right: Complex<f64>,
+        bottom_left: Complex<f64>,
+        mtrx_out: &mut [Complex<f64>],
+    ) {
+        mtrx_out[0] = I_CMPLX * (ONE_R1 / 2.0) * (top_right - bottom_left);
+        mtrx_out[1] = I_CMPLX * (ONE_R1 / 2.0) * (-top_right - bottom_left);
+        mtrx_out[2] = -mtrx_out[1];
+        mtrx_out[3] = -mtrx_out[0];
+    }
+
+    fn transform_phase(
+        &self,
+        top_left: Complex<f64>,
+        bottom_right: Complex<f64>,
+        mtrx_out: &mut [Complex<f64>],
+    ) {
+        mtrx_out[0] = (ONE_R1 / 2.0) * (top_left + bottom_right);
+        mtrx_out[1] = (ONE_R1 / 2.0) * (top_left - bottom_right);
+        mtrx_out[2] = mtrx_out[1];
+        mtrx_out[3] = mtrx_out[0];
+    }
+
+    fn revert_basis_x(&mut self, i: i32) {
+        let shard = &mut self.shards[i as usize];
+        if shard.pauli_basis != PauliX {
+            return;
+        }
+        self.convert_z_to_x(i);
+    }
+
+    fn revert_basis_y(&mut self, i: i32) {
+        let shard = &mut self.shards[i as usize];
+        if shard.pauli_basis != PauliY {
+            return;
+        }
+        shard.pauli_basis = PauliX;
+        let diag = Complex::new(ONE_R1 / 2.0, ONE_R1 / 2.0);
+        let cross = Complex::new(ONE_R1 / 2.0, -ONE_R1 / 2.0);
+        let mtrx = [diag, cross, cross, diag];
+        if shard.unit.is_some() {
+            shard.unit.mtrx(&mtrx, shard.mapped);
+        }
+        if shard.is_phase_dirty || shard.is_prob_dirty {
+            shard.is_prob_dirty = true;
+            return;
+        }
+        let y0 = shard.amp0;
+        shard.amp0 = mtrx[0] * y0 + mtrx[1] * shard.amp1;
+        shard.amp1 = mtrx[2] * y0 + mtrx[3] * shard.amp1;
+        self.clamp_shard(i);
+    }
+
+    fn revert_basis_1_qb(&mut self, i: i32) {
+        let shard = &mut self.shards[i as usize];
+        if shard.pauli_basis == PauliY {
+            self.convert_y_to_z(i);
+        } else {
+            self.revert_basis_x(i);
+        }
+    }
+
+    fn revert_basis_to_x_1_qb(&mut self, i: i32) {
+        let shard = &mut self.shards[i as usize];
+        if shard.pauli_basis == PauliZ {
+            self.convert_z_to_x(i);
+        } else if shard.pauli_basis == PauliY {
+            self.revert_basis_y(i);
+        }
+    }
+
+    fn revert_basis_to_y_1_qb(&mut self, i: i32) {
+        let shard = &mut self.shards[i as usize];
+        if shard.pauli_basis == PauliZ {
+            self.convert_z_to_y(i);
+        } else if shard.pauli_basis == PauliX {
+            self.convert_x_to_y(i);
+        }
+    }
+
+    fn convert_z_to_x(&mut self, i: i32) {
+        let shard = &mut self.shards[i as usize];
+        shard.pauli_basis = PauliX;
+        let mtrx = [Complex::new(0.0, 0.0), Complex::new(1.0, 0.0), Complex::new(1.0, 0.0), Complex::new(0.0, 0.0)];
+        if shard.unit.is_some() {
+            shard.unit.mtrx(&mtrx, shard.mapped);
+        }
+        if shard.is_phase_dirty || shard.is_prob_dirty {
+            shard.is_prob_dirty = true;
+            return;
+        }
+        let z0 = shard.amp0;
+        shard.amp0 = mtrx[0] * z0 + mtrx[1] * shard.amp1;
+        shard.amp1 = mtrx[2] * z0 + mtrx[3] * shard.amp1;
+        self.clamp_shard(i);
+    }
+
+    fn convert_x_to_y(&mut self, i: i32) {
+        let shard = &mut self.shards[i as usize];
+        shard.pauli_basis = PauliY;
+        let mtrx = [Complex::new(0.0, 0.0), Complex::new(0.0, -1.0), Complex::new(0.0, 1.0), Complex::new(0.0, 0.0)];
+        if shard.unit.is_some() {
+            shard.unit.mtrx(&mtrx, shard.mapped);
+        }
+        if shard.is_phase_dirty || shard.is_prob_dirty {
+            shard.is_prob_dirty = true;
+            return;
+        }
+        let x0 = shard.amp0;
+        shard.amp0 = mtrx[0] * x0 + mtrx[1] * shard.amp1;
+        shard.amp1 = mtrx[2] * x0 + mtrx[3] * shard.amp1;
+        self.clamp_shard(i);
+    }
+
+    fn convert_y_to_z(&mut self, i: i32) {
+        let shard = &mut self.shards[i as usize];
+        shard.pauli_basis = PauliZ;
+        let mtrx = [Complex::new(0.0, 0.0), Complex::new(1.0, 0.0), Complex::new(-1.0, 0.0), Complex::new(0.0, 0.0)];
+        if shard.unit.is_some() {
+            shard.unit.mtrx(&mtrx, shard.mapped);
+        }
+        if shard.is_phase_dirty || shard.is_prob_dirty {
+            shard.is_prob_dirty = true;
+            return;
+        }
+        let y0 = shard.amp0;
+        shard.amp0 = mtrx[0] * y0 + mtrx[1] * shard.amp1;
+        shard.amp1 = mtrx[2] * y0 + mtrx[3] * shard.amp1;
+        self.clamp_shard(i);
+    }
+
+    fn dirty_shard_range(&mut self, start: i32, length: i32) {
+        for i in 0..length {
+            self.shards[start + i].make_dirty();
+        }
+    }
+
+    fn dirty_shard_range_phase(&mut self, start: i32, length: i32) {
+        for i in 0..length {
+            self.shards[start + i].is_phase_dirty = true;
+        }
+    }
+
+    fn dirty_shard_index_vector(&mut self, bit_indices: Vec<i32>) {
+        for i in 0..bit_indices.len() {
+            self.shards[bit_indices[i] as usize].make_dirty();
+        }
+    }
+
+    fn end_emulation(&mut self, target: i32) {
+        let shard = &mut self.shards[target as usize];
+        if shard.unit.is_some() {
+            return;
+        }
+        if shard.amp1.norm() <= FP_NORM_EPSILON {
+            shard.unit = Some(self.make_engine(1, ZERO_BCI));
+        } else if shard.amp0.norm() <= FP_NORM_EPSILON {
+            shard.unit = Some(self.make_engine(1, ONE_BCI));
+        } else {
+            let bit_state = [shard.amp0, shard.amp1];
+            shard.unit = Some(self.make_engine(1, ZERO_BCI));
+            shard.unit.set_quantum_state(&bit_state);
+        }
+    }
+
+    fn find_shard_index(&mut self, shard: QEngineShardPtr) -> i32 {
+        shard.found = true;
+        for i in 0..self.shards.len() {
+            if self.shards[i].found {
+                shard.found = false;
+                return i as i32;
+            }
+        }
+        shard.found = false;
+        self.shards.len() as i32
+    }
 }
+
 
 
