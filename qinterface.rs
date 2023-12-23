@@ -215,25 +215,54 @@ struct QInterfaceImpl {
 }
 
 impl QInterfaceImpl {
-    fn new(
-        n: usize,
-        rgp: QrackRandGenPtr,
+    pub fn new(
+        n: u32,
+        rgp: Option<qrack_rand_gen_ptr>,
         do_norm: bool,
         use_hardware_rng: bool,
         random_global_phase: bool,
         norm_thresh: f64,
     ) -> Self {
+        let do_normalize = do_norm;
+        let rand_global_phase = random_global_phase;
+        let use_rdrand = use_hardware_rng;
+        let qubit_count = n;
+        let amplitude_floor = norm_thresh;
+        let max_q_power = 2u64.pow(qubit_count);
+        let rand_distribution = rand::distributions::Uniform::new(0.0, 1.0);
+        let hardware_rand_generator = if use_hardware_rng {
+            let hardware_rand_generator = RdRandom::new();
+            if !hardware_rand_generator.supports_rdrand() {
+                None
+            } else {
+                Some(hardware_rand_generator)
+            }
+        } else {
+            None
+        };
+        let rand_generator = if let Some(rgp) = rgp {
+            rgp
+        } else if let Some(hardware_rand_generator) = &hardware_rand_generator {
+            use_rdrand = true;
+            Arc::new(Mutex::new(qrack_rand_gen::new_with_rng(hardware_rand_generator)))
+        } else {
+            let random_seed = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as u32;
+            Arc::new(Mutex::new(qrack_rand_gen::new_with_seed(random_seed)))
+        };
+
         Self {
-            do_normalize: do_norm,
-            rand_global_phase: random_global_phase,
-            use_rdrand: use_hardware_rng,
-            qubit_count: n,
-            random_seed: 0,
-            amplitude_floor: norm_thresh,
-            max_q_power: 1 << n,
-            rand_generator: rgp,
-            rand_distribution: rand::distributions::Uniform::new(0.0, 1.0),
-            hardware_rand_generator: None,
+            do_normalize,
+            rand_global_phase,
+            use_rdrand,
+            qubit_count,
+            amplitude_floor,
+            max_q_power,
+            rand_distribution,
+            hardware_rand_generator,
+            rand_generator,
         }
     }
 }
@@ -1050,84 +1079,573 @@ impl QInterface for QInterfaceImpl {
         }
     }
 
-    fn sum_sqr_diff(&self, to_compare: QInterfacePtr) -> f64 {
-        unimplemented!()
+    pub fn set_permutation(&mut self, perm: u64, _ignored: Complex) {
+        let measured = self.m_all();
+        for i in 0..self.qubit_count {
+            if (perm ^ measured) >> i & 1 != 0 {
+                self.x(i);
+            }
+        }
     }
 
-    fn try_decompose(
+    pub fn qft(&mut self, start: u32, length: u32, try_separate: bool) {
+        if length == 0 {
+            return;
+        }
+        let end = start + length - 1;
+        for i in 0..length {
+            let h_bit = end - i;
+            for j in 0..i {
+                let c = h_bit;
+                let t = h_bit + 1 + j;
+                self.c_phase_root_n(j + 2, c, t);
+                if try_separate {
+                    self.try_separate(c, t);
+                }
+            }
+            self.h(h_bit);
+        }
+    }
+
+    pub fn iqft(&mut self, start: u32, length: u32, try_separate: bool) {
+        if length == 0 {
+            return;
+        }
+        for i in 0..length {
+            for j in 0..i {
+                let c = start + i - (j + 1);
+                let t = start + i;
+                self.ci_phase_root_n(j + 2, c, t);
+                if try_separate {
+                    self.try_separate(c, t);
+                }
+            }
+            self.h(start + i);
+        }
+    }
+
+    pub fn qftr(&mut self, qubits: &[u32], try_separate: bool) {
+        if qubits.is_empty() {
+            return;
+        }
+        let end = qubits.len() - 1;
+        for (i, &qubit) in qubits.iter().enumerate() {
+            self.h(qubits[end - i]);
+            for j in 0..(qubits.len() - 1 - i) {
+                self.c_phase_root_n(j + 2, qubits[(end - i) - (j + 1)], qubits[end - i]);
+            }
+            if try_separate {
+                self.try_separate(qubits[end - i]);
+            }
+        }
+    }
+
+    pub fn iqftr(&mut self, qubits: &[u32], try_separate: bool) {
+        if qubits.is_empty() {
+            return;
+        }
+        for (i, &qubit) in qubits.iter().enumerate() {
+            for j in 0..i {
+                self.ci_phase_root_n(j + 2, qubits[i - (j + 1)], qubits[i]);
+            }
+            self.h(qubits[i]);
+            if try_separate {
+                self.try_separate(qubits[i]);
+            }
+        }
+    }
+
+    pub fn set_reg(&mut self, start: u32, length: u32, value: u64) {
+        if length == 1 {
+            self.set_bit(start, value & 1 != 0);
+            return;
+        }
+        if start == 0 && length == self.qubit_count {
+            self.set_permutation(value, Complex::new(0.0, 0.0));
+            return;
+        }
+        let reg_val = self.m_reg(start, length);
+        for i in 0..length {
+            if (reg_val >> i & 1 == 0) != (value >> i & 1 == 0) {
+                self.x(start + i);
+            }
+        }
+    }
+
+    pub fn force_m_reg(
         &mut self,
-        start: usize,
-        dest: QInterfacePtr,
-        error_tol: f64,
-    ) -> bool {
-        unimplemented!()
+        start: u32,
+        length: u32,
+        result: u64,
+        do_force: bool,
+        do_apply: bool,
+    ) -> u64 {
+        let mut res = 0;
+        for bit in 0..length {
+            let power = 1 << bit;
+            if self.force_m(start + bit, result & power != 0, do_force, do_apply) {
+                res |= power;
+            }
+        }
+        res
     }
 
-    fn update_running_norm(&mut self, norm_thresh: f64) {
-        unimplemented!()
+    pub fn force_m(&mut self, bits: &[u32], values: &[bool], do_apply: bool) -> u64 {
+        if values.len() != bits.len() {
+            panic!("QInterface::ForceM() boolean values vector length does not match bit vector length!");
+        }
+        if !values.is_empty() {
+            let mut result = 0;
+            for (bit, &value) in bits.iter().zip(values) {
+                if self.force_m(*bit, value, true, do_apply) {
+                    result |= 1 << bit;
+                }
+            }
+            result
+        } else if do_apply {
+            let mut result = 0;
+            for &bit in bits {
+                if self.m(bit) {
+                    result |= 1 << bit;
+                }
+            }
+            result
+        } else {
+            let q_powers: Vec<_> = bits.iter().map(|&bit| 1 << bit).collect();
+            self.multi_shot_measure_mask(&q_powers, 1).keys().next().copied().unwrap_or(0)
+        }
     }
 
-    fn normalize_state(&mut self, nrm: f64, norm_thresh: f64, phase_arg: f64) {
-        unimplemented!()
+    pub fn prob_reg(&mut self, start: u32, length: u32, permutation: u64) -> f64 {
+        let start_mask = (1 << start) - 1;
+        let max_lcv = self.max_q_power >> length;
+        let p = permutation;
+        let mut prob = 0.0;
+        for lcv in 0..max_lcv {
+            let mut i = lcv & start_mask;
+            i |= ((lcv ^ i) | p) << length;
+            prob += self.prob_all(i);
+        }
+        prob.clamp(0.0, 1.0)
     }
 
-    fn try_separate(&mut self, qubits: &[usize], error_tol: f64) -> bool {
-        unimplemented!()
+    pub fn prob_mask(&mut self, mask: u64, permutation: u64) -> f64 {
+        if self.max_q_power - 1 == mask {
+            return self.prob_all(permutation);
+        }
+        let mut prob = 0.0;
+        for lcv in 0..self.max_q_power {
+            if lcv & mask == permutation {
+                prob += self.prob_all(lcv);
+            }
+        }
+        prob.clamp(0.0, 1.0)
     }
 
-    fn try_separate_1(&mut self, qubit: usize) -> bool {
-        unimplemented!()
+    pub fn rol(&mut self, shift: u32, start: u32, length: u32) {
+        if length < 2 {
+            return;
+        }
+        let shift = shift % length;
+        if shift == 0 {
+            return;
+        }
+        let end = start + length;
+        self.reverse(start, end);
+        self.reverse(start, start + shift);
+        self.reverse(start + shift, end);
     }
 
-    fn try_separate_2(&mut self, qubit1: usize, qubit2: usize) -> bool {
-        unimplemented!()
+    pub fn ror(&mut self, shift: u32, start: u32, length: u32) {
+        if length < 2 {
+            return;
+        }
+        let shift = shift % length;
+        if shift == 0 {
+            return;
+        }
+        let end = start + length;
+        self.reverse(start + shift, end);
+        self.reverse(start, start + shift);
+        self.reverse(start, end);
     }
 
-    fn get_unitary_fidelity(&self) -> f64 {
-        unimplemented!()
+    pub fn asl(&mut self, shift: u32, start: u32, length: u32) {
+        if length == 0 || shift == 0 {
+            return;
+        }
+        if shift >= length {
+            self.set_reg(start, length, 0);
+        } else {
+            let end = start + length;
+            self.swap(end - 1, end - 2);
+            self.rol(shift, start, length);
+            self.set_reg(start, shift, 0);
+            self.swap(end - 1, end - 2);
+        }
     }
 
-    fn reset_unitary_fidelity(&mut self) {
-        unimplemented!()
+    pub fn asr(&mut self, shift: u32, start: u32, length: u32) {
+        if length == 0 || shift == 0 {
+            return;
+        }
+        if shift >= length {
+            self.set_reg(start, length, 0);
+        } else {
+            let end = start + length;
+            self.swap(end - 1, end - 2);
+            self.ror(shift, start, length);
+            self.set_reg(end - shift - 1, shift, 0);
+            self.swap(end - 1, end - 2);
+        }
     }
 
-    fn set_sdrp(&mut self, sdrp: f64) {
-        unimplemented!()
+    pub fn lsl(&mut self, shift: u32, start: u32, length: u32) {
+        if length == 0 || shift == 0 {
+            return;
+        }
+        if shift >= length {
+            self.set_reg(start, length, 0);
+        } else {
+            self.rol(shift, start, length);
+            self.set_reg(start, shift, 0);
+        }
     }
 
-    fn set_reactive_separate(&mut self, is_agg_sep: bool) {
-        unimplemented!()
+    pub fn lsr(&mut self, shift: u32, start: u32, length: u32) {
+        if length == 0 || shift == 0 {
+            return;
+        }
+        if shift >= length {
+            self.set_reg(start, length, 0);
+        } else {
+            self.set_reg(start, shift, 0);
+            self.ror(shift, start, length);
+        }
     }
 
-    fn get_reactive_separate(&self) -> bool {
-        unimplemented!()
+    pub fn compose(&mut self, to_copy: QInterfacePtr, start: u32) -> u32 {
+        if start == self.qubit_count {
+            return self.compose(to_copy);
+        }
+        let orig_size = self.qubit_count;
+        self.rol(orig_size - start, 0, self.qubit_count);
+        let result = self.compose(to_copy);
+        self.ror(orig_size - start, 0, self.qubit_count);
+        result
     }
 
-    fn set_t_injection(&mut self, use_gadget: bool) {
-        unimplemented!()
+    pub fn compose(&mut self, to_copy: Vec<QInterfacePtr>) -> HashMap<QInterfacePtr, u32> {
+        let mut ret = HashMap::new();
+        for q in to_copy {
+            ret.insert(q, self.compose(q));
+        }
+        ret
     }
 
-    fn get_t_injection(&self) -> bool {
-        unimplemented!()
+    pub fn prob_mask_all(&mut self, mask: u64, probs_array: &mut [f64]) {
+        let mut v = mask;
+        let mut bit_powers = Vec::new();
+        while v != 0 {
+            let old_v = v;
+            v &= v - 1;
+            bit_powers.push((v ^ old_v) & old_v);
+        }
+        probs_array.iter_mut().for_each(|prob| *prob = 0.0);
+        for lcv in 0..self.max_q_power {
+            let mut i = 0;
+            for (p, &bit_power) in bit_powers.iter().enumerate() {
+                if lcv & bit_power != 0 {
+                    i |= 1 << p;
+                }
+            }
+            probs_array[i] += self.prob_all(lcv);
+        }
     }
 
-    fn clone_qinterface(&self) -> QInterfacePtr {
-        Rc::new(RefCell::new(Box::new(*self)))
+    pub fn prob_bits_all(&mut self, bits: &[u32], probs_array: &mut [f64]) {
+        if bits.len() == self.qubit_count && bits.iter().enumerate().all(|(i, &bit)| bit == i as u32) {
+            self.get_probs(probs_array);
+            return;
+        }
+        probs_array.iter_mut().for_each(|prob| *prob = 0.0);
+        let bit_powers: Vec<_> = bits.iter().map(|&bit| 1 << bit).collect();
+        for lcv in 0..self.max_q_power {
+            let mut ret_index = 0;
+            for (p, &bit_power) in bit_powers.iter().enumerate() {
+                if lcv & bit_power != 0 {
+                    ret_index |= 1 << p;
+                }
+            }
+            probs_array[ret_index] += self.prob_all(lcv);
+        }
     }
 
-    fn set_device(&mut self, d_id: i64) {
-        unimplemented!()
+    pub fn expectation_bits_factorized(
+        &mut self,
+        bits: &[u32],
+        perms: &[u64],
+        offset: u64,
+    ) -> f64 {
+        if perms.len() < (bits.len() << 1) {
+            panic!("QInterface::ExpectationBitsFactorized() must supply at least twice as many 'perms' as bits!");
+        }
+        self.finish();
+        let temp_do_norm = self.do_normalize;
+        self.do_normalize = false;
+        let mut unit_copy = self.clone();
+        self.do_normalize = temp_do_norm;
+        unit_copy.decompose(bits[0]);
+        unit_copy.compose(bits[0]);
+        let did_separate = unit_copy.approx_compare(self, error_tol);
+        if did_separate {
+            self.dispose(bits[0], self.get_qubit_count());
+        }
+        expectation
     }
 
-    fn get_device(&self) -> i64 {
-        unimplemented!()
+    pub fn expectation_floats_factorized(&mut self, bits: &[u32], weights: &[f64]) -> f64 {
+        if weights.len() < (bits.len() << 1) {
+            panic!("QInterface::ExpectationFloatsFactorized() must supply at least twice as many weights as bits!");
+        }
+        self.finish();
+        let temp_do_norm = self.do_normalize;
+        self.do_normalize = false;
+        let mut unit_copy = self.clone();
+        self.do_normalize = temp_do_norm;
+        unit_copy.decompose(bits[0]);
+        unit_copy.compose(bits[0]);
+        let did_separate = unit_copy.approx_compare(self, error_tol);
+        if did_separate {
+            self.dispose(bits[0], self.get_qubit_count());
+        }
+        expectation
     }
 
-    fn depolarizing_channel_weak_1_qb(&mut self, qubit: usize, lambda: f64) {
-        unimplemented!()
+    pub fn multi_shot_measure_mask(
+        &mut self,
+        q_powers: &[u64],
+        shots: u32,
+    ) -> HashMap<u64, u32> {
+        if shots == 0 {
+            return HashMap::new();
+        }
+        let mut results = HashMap::new();
+        let results_mutex = Arc::new(Mutex::new(results));
+        (0..shots).into_par_iter().for_each(|shot| {
+            let sample = self.sample_clone(q_powers);
+            let mut results = results_mutex.lock().unwrap();
+            *results.entry(sample).or_insert(0) += 1;
+        });
+        results_mutex.into_inner().unwrap()
     }
 
-    fn depolarizing_channel_strong_1_qb(&mut self, qubit: usize, lambda: f64) -> usize {
-        unimplemented!()
+    pub fn multi_shot_measure_mask(
+        &mut self,
+        q_powers: &[u64],
+        shots: u32,
+        shots_array: &mut [u64],
+    ) {
+        if shots == 0 {
+            return;
+        }
+        (0..shots).into_par_iter().for_each(|shot| {
+            shots_array[shot as usize] = self.sample_clone(q_powers) as u64;
+        });
     }
+
+    pub fn try_decompose(&mut self, start: u32, dest: QInterfacePtr, error_tol: f64) -> bool {
+        self.finish();
+        let temp_do_norm = self.do_normalize;
+        self.do_normalize = false;
+        let unit_copy = self.clone();
+        self.do_normalize = temp_do_norm;
+        unit_copy.decompose(start, dest);
+        unit_copy.compose(dest, start);
+        let did_separate = unit_copy.approx_compare(self, error_tol);
+        if did_separate {
+            self.dispose(start, dest.get_qubit_count());
+        }
+        did_separate
+    }
+    
+    pub fn gate(&mut self, start: usize, length: usize) {
+        for bit in 0..length {
+            self.gate(start + bit);
+        }
+    }
+
+    pub fn gate(&mut self, qubit1: usize, qubit2: usize, length: usize) {
+        for bit in 0..length {
+            self.gate(qubit1 + bit, qubit2 + bit);
+        }
+    }
+
+    pub fn gate(&mut self, qubit1: usize, qubit2: usize, qubit3: usize, length: usize) {
+        for bit in 0..length {
+            self.gate(qubit1 + bit, qubit2 + bit, qubit3 + bit);
+        }
+    }
+
+    pub fn gate(&mut self, qInputStart: usize, classicalInput: usize, outputStart: usize, length: usize) {
+        for i in 0..length {
+            self.gate(qInputStart + i, classicalInput as bitCapIntOcl, outputStart + i);
+        }
+    }
+
+    pub fn gate(&mut self, radians: f64, start: usize, length: usize) {
+        for bit in 0..length {
+            self.gate(radians, start + bit);
+        }
+    }
+
+    pub fn gate(&mut self, numerator: i32, denominator: i32, start: usize, length: usize) {
+        for bit in 0..length {
+            self.gate(numerator, denominator, start + bit);
+        }
+    }
+
+    pub fn gate(&mut self, control: usize, target: usize, length: usize) {
+        for bit in 0..length {
+            self.gate(control + bit, target + bit);
+        }
+    }
+
+    pub fn gate(&mut self, control1: usize, control2: usize, target: usize, length: usize) {
+        for bit in 0..length {
+            self.gate(control1 + bit, control2 + bit, target + bit);
+        }
+    }
+
+    pub fn gate(&mut self, radians: f64, control: usize, target: usize, length: usize) {
+        for bit in 0..length {
+            self.gate(radians, control + bit, target + bit);
+        }
+    }
+
+    pub fn gate(&mut self, numerator: i32, denominator: i32, control: usize, target: usize, length: usize) {
+        for bit in 0..length {
+            self.gate(numerator, denominator, control + bit, target + bit);
+        }
+    }
+
+    pub fn gate(&mut self, start: usize, length: usize) {
+        for bit in 0..length {
+            self.gate(start + bit);
+        }
+    }
+
+    pub fn gate(&mut self, start: usize, length: usize, theta: f64, phi: f64, lambda: f64) {
+        for bit in 0..length {
+            self.gate(start + bit, theta, phi, lambda);
+        }
+    }
+
+    pub fn gate(&mut self, start: usize, length: usize, phi: f64, lambda: f64) {
+        for bit in 0..length {
+            self.gate(start + bit, phi, lambda);
+        }
+    }
+
+    pub fn phase_root_n(&mut self, n: usize, start: usize, length: usize) {
+        for bit in 0..length {
+            self.phase_root_n(n, start + bit);
+        }
+    }
+
+    pub fn i_phase_root_n(&mut self, n: usize, start: usize, length: usize) {
+        for bit in 0..length {
+            self.i_phase_root_n(n, start + bit);
+        }
+    }
+
+    pub fn c_phase_root_n(&mut self, n: usize, control: usize, target: usize, length: usize) {
+        if n == 0 {
+            return;
+        }
+        if n == 1 {
+            self.cz(control, target, length);
+            return;
+        }
+        for bit in 0..length {
+            self.c_phase_root_n(n, control + bit, target + bit);
+        }
+    }
+
+    pub fn ci_phase_root_n(&mut self, n: usize, control: usize, target: usize, length: usize) {
+        if n == 0 {
+            return;
+        }
+        if n == 1 {
+            self.cz(control, target, length);
+            return;
+        }
+        for bit in 0..length {
+            self.ci_phase_root_n(n, control + bit, target + bit);
+        }
+    }
+
+    pub fn u(&mut self, start: usize, length: usize, theta: f64, phi: f64, lambda: f64) {
+        for bit in 0..length {
+            self.u(start + bit, theta, phi, lambda);
+        }
+    }
+
+    pub fn u2(&mut self, start: usize, length: usize, phi: f64, lambda: f64) {
+        for bit in 0..length {
+            self.u2(start + bit, phi, lambda);
+        }
+    }
+
+    pub fn r_t_dyad(&mut self, numerator: i32, denom_power: i32, qubit: usize) {
+        self.rt(dyad_angle(numerator, denom_power), qubit);
+    }
+
+    pub fn exp_dyad(&mut self, numerator: i32, denom_power: i32, qubit: usize) {
+        self.exp(dyad_angle(numerator, denom_power), qubit);
+    }
+
+    pub fn exp_x_dyad(&mut self, numerator: i32, denom_power: i32, qubit: usize) {
+        self.exp_x(dyad_angle(numerator, denom_power), qubit);
+    }
+
+    pub fn exp_y_dyad(&mut self, numerator: i32, denom_power: i32, qubit: usize) {
+        self.exp_y(dyad_angle(numerator, denom_power), qubit);
+    }
+
+    pub fn exp_z_dyad(&mut self, numerator: i32, denom_power: i32, qubit: usize) {
+        self.exp_z(dyad_angle(numerator, denom_power), qubit);
+    }
+
+    pub fn r_x_dyad(&mut self, numerator: i32, denom_power: i32, qubit: usize) {
+        self.r_x(dyad_angle(numerator, denom_power), qubit);
+    }
+
+    pub fn r_y_dyad(&mut self, numerator: i32, denom_power: i32, qubit: usize) {
+        self.r_y(dyad_angle(numerator, denom_power), qubit);
+    }
+
+    pub fn r_z_dyad(&mut self, numerator: i32, denom_power: i32, qubit: usize) {
+        self.r_z(dyad_angle(numerator, denom_power), qubit);
+    }
+
+    pub fn cr_t_dyad(&mut self, numerator: i32, denom_power: i32, control: usize, target: usize) {
+        self.crt(dyad_angle(numerator, denom_power), control, target);
+    }
+
+    pub fn cr_x_dyad(&mut self, numerator: i32, denom_power: i32, control: usize, target: usize) {
+        self.crx(dyad_angle(numerator, denom_power), control, target);
+    }
+
+    pub fn cr_y_dyad(&mut self, numerator: i32, denom_power: i32, control: usize, target: usize) {
+        self.cry(dyad_angle(numerator, denom_power), control, target);
+    }
+
+    pub fn cr_z_dyad(&mut self, numerator: i32, denom_power: i32, control: usize, target: usize) {
+        self.crz(dyad_angle(numerator, denom_power), control, target);
+    }
+}
+
+fn dyad_angle(numerator: i32, denom_power: i32) -> f64 {
+    (-PI * numerator as f64 * 2.0) / f64::powi(2.0, denom_power)
 }
