@@ -857,4 +857,5 @@ impl QEngine {
             *shot = dist.sample(&mut rng) as u64;
         }
     }
+}
 

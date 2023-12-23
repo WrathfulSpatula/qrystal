@@ -159,8 +159,3 @@ impl QAlu for QAluImpl {
     }
 }
 
-fn main() {
-    let qalu: Rc<dyn QAlu> = Rc::new(QAluImpl {});
-}
-
-

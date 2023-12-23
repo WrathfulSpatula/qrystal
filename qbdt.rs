@@ -910,24 +910,3 @@ impl QInterface for QEngine {
     }
 }
 
-fn select_bit(perm: usize, bit: usize) -> usize {
-    (perm >> bit) & 1
-}
-
-fn remove_power(perm: usize, power: usize) -> usize {
-    (perm & power) | ((perm >> 1) & !power)
-}
-
-fn norm(amp: Complex) -> f64 {
-    amp.norm()
-}
-
-fn main() {
-    let mut q_reg = QEngine::new(2);
-    q_reg.x(0);
-    q_reg.x(1);
-    let probs = q_reg.get_probs();
-    println!("{:?}", probs);
-}
-
-
