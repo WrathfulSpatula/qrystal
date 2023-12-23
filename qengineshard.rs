@@ -583,8 +583,3 @@ impl QEngineShardMap {
     }
 }
 
-fn main() {
-    // TODO: Implement main function
-}
-
-
