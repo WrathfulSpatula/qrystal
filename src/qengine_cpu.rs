@@ -88,6 +88,8 @@ impl QEngineCPU {
         })
     }
 
+
+impl QEngine for QEngineCPU {
     pub fn finish(&self) {
         if let Some(dispatch_queue) = &self.dispatch_queue {
             dispatch_queue.finish();
