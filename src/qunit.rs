@@ -1425,4 +1425,669 @@ impl QUnit {
         }
         is_h_basis
     }
+
+    pub fn phase_parity(&mut self, radians: f64, mask: i64) {
+        if mask >= self.max_q_power {
+            panic!("QUnit::PhaseParity mask out-of-bounds!");
+        }
+        
+        if mask == 0 {
+            return;
+        }
+        
+        let phase_fac = Complex::new((radians / 2.0).cos(), (radians / 2.0).sin());
+        
+        if mask.is_power_of_two() {
+            phase(Complex::new(1.0 / phase_fac.re, 1.0 / phase_fac.im), phase_fac, (mask as f64).log2() as usize);
+            return;
+        }
+        
+        let mut n_v = mask;
+        let mut q_indices = Vec::new();
+        
+        while n_v != 0 {
+            let v = n_v;
+            n_v &= v - 1;
+            q_indices.push(((v ^ n_v) & v).log2() as usize);
+            to_perm_basis_prob(*q_indices.last().unwrap());
+        }
+        
+        let mut flip_result = false;
+        let mut e_indices = Vec::new();
+        
+        for i in 0..q_indices.len() {
+            let shard = &mut self.shards[q_indices[i]];
+            
+            if shard.amp0 == 0.0 && shard.amp1 == 0.0 {
+                continue;
+            }
+            
+            if shard.amp0 == 1.0 && shard.amp1 == 0.0 {
+                flip_result = !flip_result;
+                continue;
+            }
+            
+            e_indices.push(q_indices[i]);
+        }
+        
+        if e_indices.is_empty() {
+            if flip_result {
+                phase(phase_fac, phase_fac, 0);
+            } else {
+                phase(Complex::new(1.0 / phase_fac.re, 1.0 / phase_fac.im), Complex::new(1.0 / phase_fac.re, 1.0 / phase_fac.im), 0);
+            }
+            return;
+        }
+        
+        if e_indices.len() == 1 {
+            if flip_result {
+                phase(phase_fac, Complex::new(1.0 / phase_fac.re, 1.0 / phase_fac.im), (mask as f64).log2() as usize);
+            } else {
+                phase(Complex::new(1.0 / phase_fac.re, 1.0 / phase_fac.im), phase_fac, (mask as f64).log2() as usize);
+            }
+            return;
+        }
+        
+        let unit = entangle(&e_indices);
+        
+        for i in 0..self.qubit_count {
+            if self.shards[i].unit == unit {
+                self.shards[i].make_dirty();
+            }
+        }
+        
+        let mut mapped_mask = 0;
+        
+        for i in 0..e_indices.len() {
+            mapped_mask |= 1 << self.shards[e_indices[i]].mapped;
+        }
+        
+        unit.phase_parity(if flip_result { -radians } else { radians }, mapped_mask);
+    }
+    
+    pub fn prob_parity(&mut self, mask: i64) -> f64 {
+        if mask >= self.max_q_power {
+            panic!("QUnit::ProbParity mask out-of-bounds!");
+        }
+        
+        if mask == 0 {
+            return 0.0;
+        }
+        
+        if mask.is_power_of_two() {
+            return prob((mask as f64).log2() as usize);
+        }
+        
+        let mut n_v = mask;
+        let mut q_indices = Vec::new();
+        
+        while n_v != 0 {
+            let v = n_v;
+            n_v &= v - 1;
+            q_indices.push(((v ^ n_v) & v).log2() as usize);
+            revert_basis_2_qb(*q_indices.last().unwrap());
+            let shard = &mut self.shards[*q_indices.last().unwrap()];
+            
+            if let Some(unit) = &shard.unit {
+                if queued_phase(shard) {
+                    revert_basis_1_qb(*q_indices.last().unwrap());
+                }
+            }
+        }
+        
+        let mut units = HashMap::new();
+        let mut odd_chance = 0.0;
+        let mut n_odd_chance;
+        
+        for i in 0..q_indices.len() {
+            let shard = &mut self.shards[q_indices[i]];
+            
+            if shard.unit.is_none() {
+                n_odd_chance = if shard.pauli_basis != PauliZ {
+                    (FRAC_1_SQRT_2 * (shard.amp0 - shard.amp1)).norm()
+                } else {
+                    shard.prob()
+                };
+                
+                odd_chance = (odd_chance * (1.0 - n_odd_chance)) + ((1.0 - odd_chance) * n_odd_chance);
+                continue;
+            }
+            
+            revert_basis_1_qb(q_indices[i]);
+            *units.entry(shard.unit.clone().unwrap()).or_insert(0) |= 1 << shard.mapped;
+        }
+        
+        if q_indices.is_empty() {
+            return odd_chance;
+        }
+        
+        let mut result = 0.0;
+        
+        for (unit, mapped_mask) in units {
+            let n_odd_chance = unit.prob_parity(mapped_mask);
+            result = (result * (1.0 - n_odd_chance)) + ((1.0 - result) * n_odd_chance);
+        }
+        
+        result
+    }
+    
+    pub fn force_m_parity(&mut self, mask: i64, result: bool, do_force: bool) -> bool {
+        if mask >= self.max_q_power {
+            panic!("QUnit::ForceMParity mask out-of-bounds!");
+        }
+        
+        if mask == 0 {
+            return false;
+        }
+        
+        if mask.is_power_of_two() {
+            return force_m((mask as f64).log2() as usize, result, do_force);
+        }
+        
+        let mut n_v = mask;
+        let mut q_indices = Vec::new();
+        
+        while n_v != 0 {
+            let v = n_v;
+            n_v &= v - 1;
+            q_indices.push(((v ^ n_v) & v).log2() as usize);
+            to_perm_basis_prob(*q_indices.last().unwrap());
+        }
+        
+        let mut flip_result = false;
+        let mut e_indices = Vec::new();
+        
+        for i in 0..q_indices.len() {
+            let shard = &mut self.shards[q_indices[i]];
+            
+            if shard.amp0 == 0.0 && shard.amp1 == 0.0 {
+                continue;
+            }
+            
+            if shard.amp0 == 1.0 && shard.amp1 == 0.0 {
+                flip_result = !flip_result;
+                continue;
+            }
+            
+            e_indices.push(q_indices[i]);
+        }
+        
+        if e_indices.is_empty() {
+            return flip_result;
+        }
+        
+        if e_indices.len() == 1 {
+            return flip_result ^ force_m(e_indices[0], result ^ flip_result, do_force);
+        }
+        
+        let unit = entangle(&e_indices);
+        
+        for i in 0..self.qubit_count {
+            if self.shards[i].unit == unit {
+                self.shards[i].make_dirty();
+            }
+        }
+        
+        let mut mapped_mask = 0;
+        
+        for i in 0..e_indices.len() {
+            mapped_mask |= 1 << self.shards[e_indices[i]].mapped;
+        }
+        
+        flip_result ^ unit.force_m_parity(mapped_mask, result ^ flip_result, do_force)
+    }
+
+    pub fn c_uniform_parity_rz(&self, c_controls: &[usize], mask: u64, angle: f64) {
+        let max_q_power = self.max_q_power;
+        if mask >= max_q_power {
+            panic!("QUnit::CUniformParityRZ mask out-of-bounds!");
+        }
+        self.throw_if_qb_id_array_is_bad(
+            c_controls,
+            self.qubit_count,
+            "QUnit::CUniformParityRZ parameter controls array values must be within allocated qubit bounds!",
+        );
+        let mut controls = Vec::new();
+        let mut perm = 2usize.pow(c_controls.len() as u32) - 1;
+        if self.trim_controls(c_controls, &mut controls, &mut perm) {
+            return;
+        }
+        let mut n_v = mask;
+        let mut q_indices = Vec::new();
+        while n_v != 0 {
+            let v = n_v;
+            n_v &= v - 1;
+            q_indices.push((v ^ n_v & v).log2());
+        }
+        let mut flip_result = false;
+        let mut e_indices = Vec::new();
+        for i in &q_indices {
+            self.to_perm_basis(*i);
+            if self.cached_zero(*i) {
+                continue;
+            }
+            if self.cached_one(*i) {
+                flip_result = !flip_result;
+                continue;
+            }
+            e_indices.push(*i);
+        }
+        if e_indices.is_empty() {
+            let cosine = angle.cos();
+            let sine = angle.sin();
+            let phase_fac = if flip_result {
+                Complex::new(cosine, sine)
+            } else {
+                Complex::new(cosine, -sine)
+            };
+            if controls.is_empty() {
+                self.phase(phase_fac, phase_fac, 0);
+            } else {
+                self.mc_phase(&controls, phase_fac, phase_fac, 0);
+            }
+            return;
+        }
+        if e_indices.len() == 1 {
+            let cosine = angle.cos();
+            let sine = angle.sin();
+            let phase_fac = if flip_result {
+                Complex::new(cosine, -sine)
+            } else {
+                Complex::new(cosine, sine)
+            };
+            if controls.is_empty() {
+                self.phase(phase_fac.conj(), phase_fac, e_indices[0]);
+            } else {
+                self.mc_phase(&controls, phase_fac.conj(), phase_fac, e_indices[0]);
+            }
+            return;
+        }
+        for i in &e_indices {
+            self.shards[*i].is_phase_dirty = true;
+        }
+        let unit = self.entangle(&e_indices);
+        let mut mapped_mask = 0;
+        for i in &e_indices {
+            mapped_mask |= 1 << self.shards[*i].mapped;
+        }
+        if controls.is_empty() {
+            std::dynamic_pointer_cast<QParity>(unit).uniform_parity_rz(mapped_mask, if flip_result { -angle } else { angle });
+        } else {
+            let mut ebits = Vec::with_capacity(controls.len());
+            for i in &controls {
+                ebits.push(i);
+            }
+            self.entangle(&ebits);
+            let unit = self.entangle(&[controls[0], e_indices[0]]);
+            let mut controls_mapped = Vec::with_capacity(controls.len());
+            for i in &controls {
+                let c_shard = &self.shards[*i];
+                controls_mapped.push(c_shard.mapped);
+                c_shard.is_phase_dirty = true;
+            }
+            std::dynamic_pointer_cast<QParity>(unit).c_uniform_parity_rz(
+                &controls_mapped,
+                mapped_mask,
+                if flip_result { -angle } else { angle },
+            );
+        }
+    }
+
+    fn separate_bit(&mut self, value: bool, qubit: usize) -> bool {
+        let shard = &mut self.shards[qubit];
+        let unit = shard.unit.take();
+        let mapped = shard.mapped;
+        if let Some(unit) = unit {
+            if unit.is_clifford() && !unit.try_separate(mapped) {
+                return false;
+            }
+        }
+        shard.unit = None;
+        shard.mapped = 0;
+        shard.is_prob_dirty = false;
+        shard.is_phase_dirty = false;
+        shard.amp0 = if value { ZERO_CMPLX } else { get_nonunitary_phase() };
+        shard.amp1 = if value { get_nonunitary_phase() } else { ZERO_CMPLX };
+        if unit.is_none() || unit.unwrap().get_qubit_count() == 1 {
+            return true;
+        }
+        let prob = ONE_R1_F / 2 - unit.unwrap().prob(mapped);
+        unit.unwrap().dispose(mapped, 1, if value { ONE_BCI } else { ZERO_BCI });
+        if !unit.unwrap().is_binary_decision_tree() && (ONE_R1 / 2 - prob.abs() > FP_NORM_EPSILON) {
+            unit.unwrap().update_running_norm();
+            if !do_normalize {
+                unit.unwrap().normalize_state();
+            }
+        }
+        for s in &mut self.shards {
+            if s.unit == unit && s.mapped > mapped {
+                s.mapped -= 1;
+            }
+        }
+        if unit.unwrap().get_qubit_count() != 1 {
+            return true;
+        }
+        for partner_index in 0..qubit_count {
+            let partner_shard = &mut self.shards[partner_index];
+            if unit == partner_shard.unit {
+                prob_base(partner_index);
+                break;
+            }
+        }
+        true
+    }
+
+    fn force_m(&mut self, qubit: usize, res: bool, do_force: bool, do_apply: bool) -> bool {
+        if qubit >= qubit_count {
+            panic!("QUnit::ForceM target parameter must be within allocated qubit bounds!");
+        }
+        if do_apply {
+            revert_basis_1_qb(qubit);
+            revert_basis_2_qb(qubit, ONLY_INVERT, ONLY_TARGETS);
+        } else {
+            to_perm_basis_measure(qubit);
+        }
+        let shard = &mut self.shards[qubit];
+        let result;
+        if shard.unit.is_none() {
+            let prob = norm(shard.amp1) as real1_f;
+            if do_force {
+                result = res;
+            } else if prob >= ONE_R1 {
+                result = true;
+            } else if prob <= ZERO_R1 {
+                result = false;
+            } else {
+                result = rand() <= prob;
+            }
+        } else {
+            result = shard.unit.unwrap().force_m(shard.mapped, res, do_force, do_apply);
+        }
+        if !do_apply {
+            return result;
+        }
+        shard.is_prob_dirty = false;
+        shard.is_phase_dirty = false;
+        shard.amp0 = if result { ZERO_CMPLX } else { get_nonunitary_phase() };
+        shard.amp1 = if result { get_nonunitary_phase() } else { ZERO_CMPLX };
+        if shard.get_qubit_count() == 1 {
+            shard.unit = None;
+            shard.mapped = 0;
+            if result {
+                flush_1_eigenstate(qubit);
+            } else {
+                flush_0_eigenstate(qubit);
+            }
+            return result;
+        }
+        if let Some(unit) = shard.unit {
+            for i in 0..qubit {
+                if self.shards[i].unit == unit {
+                    self.shards[i].make_dirty();
+                }
+            }
+            for i in qubit + 1..qubit_count {
+                if self.shards[i].unit == unit {
+                    self.shards[i].make_dirty();
+                }
+            }
+            separate_bit(result, qubit);
+        }
+        if result {
+            flush_1_eigenstate(qubit);
+        } else {
+            flush_0_eigenstate(qubit);
+        }
+        result
+    }
+
+    fn force_m_reg(&mut self, start: usize, length: usize, result: bitCapInt, do_force: bool, do_apply: bool) -> bitCapInt {
+        if is_bad_bit_range(start, length, qubit_count) {
+            panic!("QUnit::ForceMReg range is out-of-bounds!");
+        }
+        if !do_force && do_apply && length == qubit_count {
+            return m_all();
+        }
+        if !do_apply {
+            to_perm_basis_measure(start, length);
+        }
+        QInterface::force_m_reg(start, length, result, do_force, do_apply)
+    }
+
+    fn m_all(&mut self) -> bitCapInt {
+        for i in 0..qubit_count {
+            revert_basis_1_qb(i);
+        }
+        for i in 0..qubit_count {
+            let shard = &mut self.shards[i];
+            shard.dump_phase_buffers();
+            shard.clear_invert_phase();
+        }
+        if use_t_gadget && engines[0] == QINTERFACE_STABILIZER_HYBRID {
+            for i in 0..qubit_count {
+                let shard = &mut self.shards[i];
+                if let Some(unit) = shard.unit {
+                    if unit.is_clifford() {
+                        unit.m_all();
+                    }
+                }
+            }
+        }
+        for i in 0..qubit_count {
+            if self.shards[i].is_invert_control() {
+                m(i);
+            }
+        }
+        let mut to_ret = ZERO_BCI;
+        for i in 0..qubit_count {
+            let to_find = self.shards[i].unit;
+            if to_find.is_none() {
+                let prob = norm(self.shards[i].amp1) as real1_f;
+                if prob >= ONE_R1 || (prob > ZERO_R1 && rand() <= prob) {
+                    self.shards[i].amp0 = ZERO_CMPLX;
+                    self.shards[i].amp1 = get_nonunitary_phase();
+                    bi_or_ip(&mut to_ret, pow2(i));
+                } else {
+                    self.shards[i].amp0 = get_nonunitary_phase();
+                    self.shards[i].amp1 = ZERO_CMPLX;
+                }
+            } else if m(i) {
+                bi_or_ip(&mut to_ret, pow2(i));
+            }
+        }
+        let orig_fidelity = log_fidelity;
+        set_permutation(to_ret);
+        log_fidelity = orig_fidelity;
+        to_ret
+    }
+
+    fn multi_shot_measure_mask(&mut self, q_powers: &[bitCapInt], shots: u32) -> std::collections::HashMap<bitCapInt, i32> {
+        if shots == 0 {
+            return std::collections::HashMap::new();
+        }
+        if q_powers.len() == self.shards.len() {
+            for i in 0..qubit_count {
+                revert_basis_1_qb(i);
+            }
+        } else {
+            to_perm_basis_prob();
+        }
+        let mut q_indices = Vec::with_capacity(q_powers.len());
+        let mut i_q_powers = std::collections::HashMap::new();
+        for i in 0..q_powers.len() {
+            let index = q_powers[i].log2();
+            q_indices.push(index);
+            i_q_powers.insert(index, pow2(i));
+        }
+        throw_if_qb_id_array_is_bad(&q_indices, qubit_count, "QInterface::MultiShotMeasureMask parameter qPowers array values must be within allocated qubit bounds!");
+        let mut sub_q_powers = std::collections::HashMap::new();
+        let mut sub_i_q_powers = std::collections::HashMap::new();
+        let mut single_bits = Vec::new();
+        for i in 0..q_powers.len() {
+            let index = q_indices[i];
+            let shard = &self.shards[index];
+            if shard.unit.is_none() {
+                single_bits.push(index);
+                continue;
+            }
+            sub_q_powers.entry(shard.unit).or_insert_with(Vec::new).push(pow2(shard.mapped));
+            sub_i_q_powers.entry(shard.unit).or_insert_with(Vec::new).push(*i_q_powers.get(&index).unwrap());
+        }
+        let mut combined_results = std::collections::HashMap::new();
+        combined_results.insert(ZERO_BCI, shots as i32);
+        for (sub_q_power, sub_q_powers) in sub_q_powers {
+            let unit_results = sub_q_power.unwrap().multi_shot_measure_mask(&sub_q_powers, shots);
+            let mut top_level_results = std::collections::HashMap::new();
+            for (unit_result, count) in unit_results {
+                let mut mask = ZERO_BCI;
+                for i in 0..sub_q_powers.len() {
+                    if bi_and_1(unit_result >> i) {
+                        bi_or_ip(&mut mask, *sub_i_q_powers.get(&sub_q_power).unwrap().get(i).unwrap());
+                    }
+                }
+                top_level_results.insert(mask, count);
+            }
+            if bi_compare_0(top_level_results.iter().next().unwrap().0) == 0 && top_level_results.get(&ZERO_BCI).unwrap() == &(shots as i32) {
+                continue;
+            }
+            if bi_compare_0(combined_results.iter().next().unwrap().0) == 0 && combined_results.get(&ZERO_BCI).unwrap() == &(shots as i32) {
+                std::mem::swap(&mut top_level_results, &mut combined_results);
+                continue;
+            }
+            if combined_results.len() < top_level_results.len() {
+                std::mem::swap(&mut top_level_results, &mut combined_results);
+            }
+            let mut n_combined_results = std::collections::HashMap::new();
+            if top_level_results.len() == 1 {
+                let pick_iter = top_level_results.iter().next().unwrap();
+                for (combined_result, _) in &combined_results {
+                    n_combined_results.insert(combined_result | pick_iter.0, *combined_result);
+                }
+                combined_results = n_combined_results;
+                continue;
+            }
+            let mut shots_left = shots;
+            for (combined_result, _) in &combined_results {
+                for _ in 0..*combined_result {
+                    let pick = (shots_left as f64 * rand()) as i32;
+                    if shots_left <= pick {
+                        pick = shots_left - 1;
+                    }
+                    shots_left -= 1;
+                    let mut pick_iter = top_level_results.iter().next().unwrap();
+                    let mut count = *pick_iter.1;
+                    while pick > count {
+                        pick_iter = top_level_results.iter().next().unwrap();
+                        count += *pick_iter.1;
+                    }
+                    *n_combined_results.entry(combined_result | pick_iter.0).or_insert(0) += 1;
+                    *pick_iter.1 -= 1;
+                    if *pick_iter.1 == 0 {
+                        top_level_results.remove(&pick_iter.0);
+                    }
+                }
+            }
+            combined_results = n_combined_results;
+        }
+        for i in 0..single_bits.len() {
+            let index = single_bits[i];
+            let prob = clamp_prob(norm(self.shards[index].amp1) as real1_f);
+            if prob == ZERO_R1 {
+                continue;
+            }
+            let mut n_combined_results = std::collections::HashMap::new();
+            if prob == ONE_R1 {
+                for (combined_result, _) in &combined_results {
+                    n_combined_results.insert(combined_result | *i_q_powers.get(&index).unwrap(), *combined_result);
+                }
+            } else {
+                for (combined_result, _) in &combined_results {
+                    let zero_perm = *combined_result;
+                    let one_perm = *combined_result | *i_q_powers.get(&index).unwrap();
+                    for _ in 0..*combined_result {
+                        if rand() > prob {
+                            *n_combined_results.entry(zero_perm).or_insert(0) += 1;
+                        } else {
+                            *n_combined_results.entry(one_perm).or_insert(0) += 1;
+                        }
+                    }
+                }
+            }
+            combined_results = n_combined_results;
+        }
+        if q_powers.len() != self.shards.len() {
+            return combined_results;
+        }
+        let mut to_ret = std::collections::HashMap::new();
+        for (combined_result, _) in &combined_results {
+            let perm = *combined_result;
+            for i in 0..q_indices.len() {
+                let shard = &self.shards[q_indices[i]];
+                let controls_shards = if bi_and_1(perm >> i) { &shard.controls_shards } else { &shard.anti_controls_shards };
+                for (phase_shard, _) in controls_shards {
+                    if !phase_shard.is_invert {
+                        continue;
+                    }
+                    let partner = phase_shard.first;
+                    let target = find_shard_index(partner);
+                    for j in 0..q_indices.len() {
+                        if q_indices[j] == target {
+                            bi_xor_ip(&mut perm, pow2(j));
+                            break;
+                        }
+                    }
+                }
+            }
+            *to_ret.entry(perm).or_insert(0) += *combined_result;
+        }
+        to_ret
+    }
+
+    fn multi_shot_measure_mask(&mut self, q_powers: &[bitCapInt], shots: u32, shots_array: &mut [u64]) {
+        if shots == 0 {
+            return;
+        }
+        if q_powers.len() != self.shards.len() {
+            to_perm_basis_prob();
+            let unit = self.shards[q_powers[0].log2()].unit;
+            if let Some(unit) = unit {
+                let mut mapped_indices = Vec::with_capacity(q_powers.len());
+                for j in 0..qubit_count {
+                    if bi_compare(q_powers[0], pow2(j)) == 0 {
+                        mapped_indices[0] = pow2(self.shards[j].mapped);
+                        break;
+                    }
+                }
+                for i in 1..q_powers.len() {
+                    let qubit = q_powers[i].log2();
+                    if qubit >= qubit_count {
+                        panic!("QUnit::MultiShotMeasureMask parameter qPowers array values must be within allocated qubit bounds!");
+                    }
+                    if unit != self.shards[qubit].unit {
+                        unit = None;
+                        break;
+                    }
+                    for j in 0..qubit_count {
+                        if bi_compare(q_powers[i], pow2(j)) == 0 {
+                            mapped_indices[i] = pow2(self.shards[j].mapped);
+                            break;
+                        }
+                    }
+                }
+                if let Some(unit) = unit {
+                    unit.multi_shot_measure_mask(&mapped_indices, shots, shots_array);
+                    return;
+                }
+            }
+        }
+        let results = self.multi_shot_measure_mask(q_powers, shots);
+        let mut j = 0;
+        let mut it = results.iter();
+        while let Some((perm, count)) = it.next() {
+            for _ in 0..*count {
+                shots_array[j] = *perm as u64;
+                j += 1;
+            }
+        }
+    }
 }
