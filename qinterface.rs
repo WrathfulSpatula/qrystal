@@ -55,166 +55,6 @@ struct QInterface {
 trait ParallelFor {}
 
 trait QInterface: ParallelFor {
-    fn set_qubit_count(&mut self, qb: usize);
-    fn norm_helper(c: Complex) -> f64;
-    fn clamp_prob(to_clamp: f64) -> f64;
-    fn get_nonunitary_phase(&self) -> Complex;
-    fn mac_wrapper<F>(&mut self, controls: &[usize], fn: F)
-    where
-        F: Fn(&[usize]);
-    fn sample_clone(&self, q_powers: &[usize]) -> usize;
-    fn finish(&mut self);
-    fn is_finished(&self) -> bool;
-    fn dump(&self);
-    fn is_binary_decision_tree(&self) -> bool;
-    fn is_clifford(&self) -> bool;
-    fn is_clifford_qubit(&self, qubit: usize) -> bool;
-    fn is_open_cl(&self) -> bool;
-    fn set_random_seed(&mut self, seed: u32);
-    fn set_concurrency(&mut self, threads_per_engine: u32);
-    fn get_qubit_count(&self) -> usize;
-    fn get_max_q_power(&self) -> usize;
-    fn get_is_arbitrary_global_phase(&self) -> bool;
-    fn rand(&self) -> f64;
-    fn set_permutation(&mut self, perm: usize, phase_fac: Complex);
-    fn compose(&mut self, to_copy: QInterfacePtr) -> usize;
-    fn compose_no_clone(&mut self, to_copy: QInterfacePtr) -> usize;
-    fn compose_multiple(&mut self, to_copy: Vec<QInterfacePtr>) -> HashMap<QInterfacePtr, usize>;
-    fn compose_with_start(&mut self, to_copy: QInterfacePtr, start: usize) -> usize;
-    fn allocate(&mut self, length: usize) -> usize;
-    fn allocate_with_start(&mut self, start: usize, length: usize) -> usize;
-    fn mac_mtrx(&mut self, controls: &[usize], mtrx: &[Complex], target: usize);
-    fn uc_mtrx(&mut self, controls: &[usize], mtrx: &[Complex], target: usize, control_perm: usize);
-    fn phase(&mut self, top_left: Complex, bottom_right: Complex, qubit_index: usize);
-    fn invert(&mut self, top_right: Complex, bottom_left: Complex, qubit_index: usize);
-    fn mc_phase(
-        &mut self,
-        controls: &[usize],
-        top_left: Complex,
-        bottom_right: Complex,
-        target: usize,
-    );
-    fn mc_invert(
-        &mut self,
-        controls: &[usize],
-        top_right: Complex,
-        bottom_left: Complex,
-        target: usize,
-    );
-    fn mac_phase(
-        &mut self,
-        controls: &[usize],
-        top_left: Complex,
-        bottom_right: Complex,
-        target: usize,
-    );
-    fn mac_invert(
-        &mut self,
-        controls: &[usize],
-        top_right: Complex,
-        bottom_left: Complex,
-        target: usize,
-    );
-    fn uc_phase(
-        &mut self,
-        controls: &[usize],
-        top_left: Complex,
-        bottom_right: Complex,
-        target: usize,
-        control_perm: usize,
-    );
-    fn uc_invert(
-        &mut self,
-        controls: &[usize],
-        top_right: Complex,
-        bottom_left: Complex,
-        target: usize,
-        control_perm: usize,
-    );
-    fn uniformly_controlled_single_bit(
-        &mut self,
-        controls: &[usize],
-        qubit_index: usize,
-        mtrxs: &[Complex],
-    );
-    fn ccnot(&mut self, control1: usize, control2: usize, target: usize);
-    fn anti_ccnot(&mut self, control1: usize, control2: usize, target: usize);
-    fn cnot(&mut self, control: usize, target: usize);
-    fn anti_cnot(&mut self, control: usize, target: usize);
-    fn cy(&mut self, control: usize, target: usize);
-    fn anti_cy(&mut self, control: usize, target: usize);
-    fn ccy(&mut self, control1: usize, control2: usize, target: usize);
-    fn anti_ccy(&mut self, control1: usize, control2: usize, target: usize);
-    fn cz(&mut self, control: usize, target: usize);
-    fn anti_cz(&mut self, control: usize, target: usize);
-    fn ccz(&mut self, control1: usize, control2: usize, target: usize);
-    fn anti_ccz(&mut self, control1: usize, control2: usize, target: usize);
-    fn u(&mut self, target: usize, theta: f64, phi: f64, lambda: f64);
-    fn u2(&mut self, target: usize, phi: f64, lambda: f64);
-    fn iu2(&mut self, target: usize, phi: f64, lambda: f64);
-    fn h(&mut self, qubit: usize);
-    fn sqrt_h(&mut self, qubit: usize);
-    fn sh(&mut self, qubit: usize);
-    fn his(&mut self, qubit: usize);
-    fn m(&mut self, qubit_index: usize) -> bool;
-    fn force_m(&mut self, qubit: usize, result: bool, do_force: bool, do_apply: bool) -> bool;
-    fn s(&mut self, qubit: usize);
-    fn is(&mut self, qubit: usize);
-    fn t(&mut self, qubit: usize);
-    fn it(&mut self, qubit: usize);
-    fn phase_root_n(&mut self, n: usize, qubit: usize);
-    fn i_phase_root_n(&mut self, n: usize, qubit: usize);
-    fn x(&mut self, qubit: usize);
-    fn y(&mut self, qubit: usize);
-    fn z(&mut self, qubit: usize);
-    fn sqrt_x(&mut self, qubit: usize);
-    fn isqrt_x(&mut self, qubit: usize);
-    fn sqrt_y(&mut self, qubit: usize);
-    fn isqrt_y(&mut self, qubit: usize);
-    fn sqrt_w(&mut self, qubit: usize);
-    fn isqrt_w(&mut self, qubit: usize);
-    fn ch(&mut self, control: usize, target: usize);
-    fn anti_ch(&mut self, control: usize, target: usize);
-    fn cs(&mut self, control: usize, target: usize);
-    fn anti_cs(&mut self, control: usize, target: usize);
-    fn cis(&mut self, control: usize, target: usize);
-    fn anti_cis(&mut self, control: usize, target: usize);
-    fn ct(&mut self, control: usize, target: usize);
-    fn cit(&mut self, control: usize, target: usize);
-    fn c_phase_root_n(&mut self, n: usize, control: usize, target: usize);
-    fn anti_c_phase_root_n(&mut self, n: usize, control: usize, target: usize);
-    fn ci_phase_root_n(&mut self, n: usize, control: usize, target: usize);
-    fn anti_ci_phase_root_n(&mut self, n: usize, control: usize, target: usize);
-    fn phase_flip(&mut self);
-    fn set_reg(&mut self, start: usize, length: usize, value: usize);
-    fn m_reg(&mut self, start: usize, length: usize) -> usize;
-    fn m_all(&mut self) -> usize;
-    fn force_m_reg(
-        &mut self,
-        start: usize,
-        length: usize,
-        result: usize,
-        do_force: bool,
-        do_apply: bool,
-    ) -> usize;
-    fn m(&mut self, bits: &[usize]) -> usize;
-    fn force_m(&mut self, bits: &[usize], values: &[bool], do_apply: bool) -> usize;
-}
-
-struct QInterfaceImpl {
-    do_normalize: bool,
-    rand_global_phase: bool,
-    use_rdrand: bool,
-    qubit_count: usize,
-    random_seed: u32,
-    amplitude_floor: f64,
-    max_q_power: usize,
-    rand_generator: QrackRandGenPtr,
-    rand_distribution: rand::distributions::Uniform<f64>,
-    hardware_rand_generator: Option<RdRandom>,
-}
-
-impl QInterfaceImpl {
     pub fn new(
         n: u32,
         rgp: Option<qrack_rand_gen_ptr>,
@@ -265,16 +105,50 @@ impl QInterfaceImpl {
             rand_generator,
         }
     }
-}
 
-impl QInterface for QInterfaceImpl {
+    fn get_quantum_state(&self) -> &[Complex];
+    fn set_quantum_state(&mut self, state: &[Complex]);
+    fn get_probs(&self) -> &[f64];
+    fn get_amplitude(&self, perm: usize) -> Complex;
+    fn set_amplitude(&mut self, perm: usize, amp: Complex);
+    fn decompose(&mut self, start: usize, dest: &mut dyn QInterface);
+    fn allocate(&mut self, start: usize, length: usize) -> usize;
+    fn dispose(&mut self, start: usize, length: usize);
+    fn dispose_with_perm(&mut self, start: usize, length: usize, disposed_perm: usize);
+
+    fn mtrx(&mut self, mtrx: &[Complex], target: usize);
+    fn mc_mtrx(&mut self, controls: &[usize], mtrx: &[Complex], target: usize);
+
+    fn m(&mut self, qubit_index: usize, do_force: bool, do_apply: bool) -> bool;
+
+    fn f_sim(&mut self, theta: f64, phi: f64, qb1: usize, qb2: usize);
+
+    fn prob(&self, qb: usize) -> f64;
+    fn prob_reg(&self, start: usize, length: usize, permutation: usize) -> f64;
+    fn prob_mask(&self, mask: usize, permutation: usize) -> f64;
+    fn prob_mask_all(&self, mask: usize, probs_array: &mut [f64]);
+    fn prob_bits_all(&self, bits: &[usize], probs_array: &mut [f64]);
+    fn expectation_bits_all(&self, bits: &[usize], offset: usize) -> f64;
+    fn expectation_bits_factorized(
+        &self,
+        bits: &[usize],
+        perms: &[usize],
+        offset: usize,
+    ) -> f64;
+    fn expectation_floats_factorized(
+        &self,
+        bits: &[usize],
+        weights: &[f64],
+    ) -> f64;
+    fn multi_shot_measure_mask(
+        &mut self,
+        q_powers: &[usize],
+        shots: u32,
+    ) -> HashMap<usize, i32>;
+
     fn set_qubit_count(&mut self, qb: usize) {
         self.qubit_count = qb;
         self.max_q_power = 1 << qb;
-    }
-
-    fn norm_helper(c: Complex) -> f64 {
-        c.norm()
     }
 
     fn clamp_prob(to_clamp: f64) -> f64 {
@@ -990,10 +864,6 @@ impl QInterface for QInterfaceImpl {
         }
     }
 
-    fn prob(&self, qubit_index: usize) -> f64 {
-        unimplemented!()
-    }
-
     fn c_prob(&mut self, control: usize, target: usize) -> f64 {
         self.anti_cnot(control, target);
         let prob = self.prob(target);
@@ -1010,43 +880,6 @@ impl QInterface for QInterfaceImpl {
 
     fn prob_all(&self, full_register: usize) -> f64 {
         Self::clamp_prob(self.get_amplitude(full_register).norm())
-    }
-
-    fn prob_reg(&self, start: usize, length: usize, permutation: usize) -> f64 {
-        unimplemented!()
-    }
-
-    fn prob_mask(&self, mask: usize, permutation: usize) -> f64 {
-        unimplemented!()
-    }
-
-    fn prob_mask_all(&self, mask: usize, probs_array: &mut [f64]) {
-        unimplemented!()
-    }
-
-    fn prob_bits_all(&self, bits: &[usize], probs_array: &mut [f64]) {
-        unimplemented!()
-    }
-
-    fn expectation_bits_all(&self, bits: &[usize], offset: usize) -> f64 {
-        unimplemented!()
-    }
-
-    fn expectation_bits_factorized(
-        &self,
-        bits: &[usize],
-        perms: &[usize],
-        offset: usize,
-    ) -> f64 {
-        unimplemented!()
-    }
-
-    fn expectation_floats_factorized(
-        &self,
-        bits: &[usize],
-        weights: &[f64],
-    ) -> f64 {
-        unimplemented!()
     }
 
     fn prob_rdm(&self, qubit_index: usize) -> f64 {
@@ -1068,14 +901,6 @@ impl QInterface for QInterfaceImpl {
         offset: usize,
     ) -> f64 {
         self.expectation_bits_all(bits, offset)
-    }
-
-    fn multi_shot_measure_mask(
-        &mut self,
-        q_powers: &[usize],
-        shots: u32,
-    ) -> HashMap<usize, i32> {
-        unimplemented!()
     }
 
     fn set_bit(&mut self, qubit: usize, value: bool) {
