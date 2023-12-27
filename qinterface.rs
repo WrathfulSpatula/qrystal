@@ -925,13 +925,11 @@ impl QInterface for QInterfaceImpl {
     fn set_reg(&mut self, start: usize, length: usize, value: usize) {}
 
     fn m_reg(&mut self, start: usize, length: usize) -> usize {
-        // TODO: Implement
-        0
+        force_m_reg(start, length, ZERO_BCI, false, true);
     }
 
     fn m_all(&mut self) -> usize {
-        // TODO: Implement
-        0
+        m_reg(0, self.qubit_count)
     }
 
     fn force_m_reg(
@@ -942,18 +940,44 @@ impl QInterface for QInterfaceImpl {
         do_force: bool,
         do_apply: bool,
     ) -> usize {
-        // TODO: Implement
-        0
+        let mut res: u64 = 0;
+        for bit in 0..length {
+            let power = 1 << bit;
+            if force_m(start + bit, (power & result) != 0, do_force, do_apply) {
+                res |= power;
+            }
+        }
+        res
     }
 
     fn m(&mut self, bits: &[usize]) -> usize {
-        // TODO: Implement
-        0
+        self.force_m(bits, Vec::<bool>::new())
     }
 
     fn force_m(&mut self, bits: &[usize], values: &[bool], do_apply: bool) -> usize {
-        // TODO: Implement
-        0
+        if !values.is_empty() && bits.len() != values.len() {
+            panic!("QInterface::ForceM() boolean values vector length does not match bit vector length!");
+        }
+        if !values.is_empty() {
+            let mut result = 0;
+            for (bit, &value) in bits.iter().zip(values.iter()) {
+                if self.force_m(*bit, value, true, do_apply) {
+                    result |= pow2(*bit);
+                }
+            }
+            result
+        } else if do_apply {
+            let mut result = 0;
+            for &bit in bits {
+                if self.m(bit) {
+                    result |= pow2(bit);
+                }
+            }
+            result
+        } else {
+            let q_powers: Vec<u64> = bits.iter().map(|&bit| self.pow2(bit)).collect();
+            *self.multi_shot_measure_mask(&q_powers, 1).keys().next().unwrap()
+        }
     }
 
     fn reverse(&mut self, first: usize, last: usize) {
