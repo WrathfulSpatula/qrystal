@@ -229,3 +229,94 @@ impl QBdtNodeInterface for QBdtNode {
     }
 }
 
+trait QInterfaceEngine: QInterface {
+    fn get_qubit_count(&self) -> usize;
+    fn get_amplitude(&self, perm: usize) -> Complex;
+    fn set_amplitude(&mut self, perm: usize, amp: Complex);
+    fn get_probs(&self) -> Vec<f64>;
+    fn get_quantum_state(&self) -> Vec<Complex>;
+    fn set_quantum_state(&mut self, state: &[Complex]);
+    fn clone(&self) -> Box<dyn QInterface>;
+    fn compose(&mut self, to_copy: &dyn QInterface, start: usize) -> usize;
+    fn decompose(&mut self, start: usize, dest: &mut dyn QInterface);
+    fn allocate(&mut self, start: usize, length: usize) -> usize;
+    fn dispose(&mut self, start: usize, length: usize);
+    fn dispose_with_perm(&mut self, start: usize, length: usize, disposed_perm: usize);
+    fn m(&mut self, qubit: usize) -> bool;
+    fn x(&mut self, qubit: usize);
+    fn inc(&mut self, to_add: usize, start: usize, length: usize);
+    fn dec(&mut self, to_sub: usize, start: usize, length: usize);
+    fn inc_c(&mut self, to_add: usize, in_out_start: usize, length: usize, controls: &[usize]);
+    fn dec_c(&mut self, to_sub: usize, in_out_start: usize, length: usize, controls: &[usize]);
+    fn inc_dec_s_c(&mut self, to_add: usize, start: usize, length: usize, overflow_index: usize, carry_index: usize);
+    fn inc_dec_s(&mut self, to_add: usize, start: usize, length: usize, carry_index: usize);
+    fn mul_mod_n_out(&mut self, to_mul: usize, mod_n: usize, in_start: usize, out_start: usize, length: usize);
+    fn imul_mod_n_out(&mut self, to_mul: usize, mod_n: usize, in_start: usize, out_start: usize, length: usize);
+    fn cmul_mod_n_out(
+        &mut self,
+        to_mul: usize,
+        mod_n: usize,
+        in_start: usize,
+        out_start: usize,
+        length: usize,
+        controls: &[usize],
+    );
+    fn cimul_mod_n_out(
+        &mut self,
+        to_mul: usize,
+        mod_n: usize,
+        in_start: usize,
+        out_start: usize,
+        length: usize,
+        controls: &[usize],
+    );
+    fn phase_flip_if_less(&mut self, greater_perm: usize, start: usize, length: usize);
+    fn cphase_flip_if_less(&mut self, greater_perm: usize, start: usize, length: usize, flag_index: usize);
+    fn inc_dec_s_c_c(&mut self, to_add: usize, start: usize, length: usize, overflow_index: usize, carry_index: usize);
+    fn inc_dec_s_c(&mut self, to_add: usize, start: usize, length: usize, carry_index: usize);
+    fn inc_bcd(&mut self, to_add: usize, start: usize, length: usize);
+    fn inc_dec_bcd_c(&mut self, to_add: usize, start: usize, length: usize, carry_index: usize);
+    fn mul(&mut self, to_mul: usize, in_out_start: usize, carry_start: usize, length: usize);
+    fn div(&mut self, to_div: usize, in_out_start: usize, carry_start: usize, length: usize);
+    fn pow_mod_n_out(&mut self, base: usize, mod_n: usize, in_start: usize, out_start: usize, length: usize);
+    fn cmul(&mut self, to_mul: usize, in_out_start: usize, carry_start: usize, length: usize, controls: &[usize]);
+    fn cdiv(&mut self, to_div: usize, in_out_start: usize, carry_start: usize, length: usize, controls: &[usize]);
+    fn cpow_mod_n_out(
+        &mut self,
+        base: usize,
+        mod_n: usize,
+        in_start: usize,
+        out_start: usize,
+        length: usize,
+        controls: &[usize],
+    );
+    fn indexed_lda(
+        &mut self,
+        index_start: usize,
+        index_length: usize,
+        value_start: usize,
+        value_length: usize,
+        values: &[u8],
+        reset_value: bool,
+    ) -> usize;
+    fn indexed_adc(
+        &mut self,
+        index_start: usize,
+        index_length: usize,
+        value_start: usize,
+        value_length: usize,
+        carry_index: usize,
+        values: &[u8],
+    ) -> usize;
+    fn indexed_sbc(
+        &mut self,
+        index_start: usize,
+        index_length: usize,
+        value_start: usize,
+        value_length: usize,
+        carry_index: usize,
+        values: &[u8],
+    ) -> usize;
+    fn hash(&mut self, start: usize, length: usize, values: &[u8]);
+}
+

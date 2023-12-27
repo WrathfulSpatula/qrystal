@@ -5,7 +5,9 @@ use std::ptr;
 use std::slice;
 use std::vec::Vec;
 
-pub struct QEngine {
+mod QInterface;
+
+trait QEngine: QInterface {
     use_host_ram: bool,
     running_norm: f64,
     max_q_power_ocl: u64,
@@ -17,9 +19,7 @@ pub struct QEngine {
     use_hardware_rng: bool,
     norm_thresh: f64,
     qubit_states: Vec<Complex>,
-}
 
-impl QEngine {
     pub fn new(
         qubit_count: usize,
         rgp: Option<*mut qrack_rand_gen>,
@@ -858,4 +858,3 @@ impl QEngine {
         }
     }
 }
-

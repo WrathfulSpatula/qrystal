@@ -54,6 +54,8 @@ struct QInterface {
     hardware_rand_generator: Option<RdRandom>,
 }
 
+trait ParallelFor {}
+
 trait QInterface: ParallelFor {
     pub fn new(
         n: u32,

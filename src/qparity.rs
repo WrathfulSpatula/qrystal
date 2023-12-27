@@ -15,7 +15,3 @@ pub trait QParity {
     
     fn c_uniform_parity_rz(&self, controls: Vec<u32>, mask: u64, angle: f64);
 }
-
-pub type QParityPtr = Rc<dyn QParity>;
-
-
