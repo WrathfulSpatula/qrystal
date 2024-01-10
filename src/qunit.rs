@@ -1777,7 +1777,7 @@ impl QUnit {
         true
     }
 
-    fn force_m(&mut self, qubit: usize, res: bool, do_force: bool, do_apply: bool) -> bool {
+    pub fn force_m(&mut self, qubit: usize, res: bool, do_force: bool, do_apply: bool) -> bool {
         if qubit >= qubit_count {
             panic!("QUnit::ForceM target parameter must be within allocated qubit bounds!");
         }
@@ -1841,7 +1841,7 @@ impl QUnit {
         result
     }
 
-    fn force_m_reg(&mut self, start: usize, length: usize, result: bitCapInt, do_force: bool, do_apply: bool) -> bitCapInt {
+    pub fn force_m_reg(&mut self, start: usize, length: usize, result: bitCapInt, do_force: bool, do_apply: bool) -> bitCapInt {
         if is_bad_bit_range(start, length, qubit_count) {
             panic!("QUnit::ForceMReg range is out-of-bounds!");
         }
@@ -1854,7 +1854,7 @@ impl QUnit {
         QInterface::force_m_reg(start, length, result, do_force, do_apply)
     }
 
-    fn m_all(&mut self) -> bitCapInt {
+    pub fn m_all(&mut self) -> bitCapInt {
         for i in 0..qubit_count {
             revert_basis_1_qb(i);
         }
@@ -1901,7 +1901,7 @@ impl QUnit {
         to_ret
     }
 
-    fn multi_shot_measure_mask(&mut self, q_powers: &[bitCapInt], shots: u32) -> std::collections::HashMap<bitCapInt, i32> {
+    pub fn multi_shot_measure_mask(&mut self, q_powers: &[bitCapInt], shots: u32) -> std::collections::HashMap<bitCapInt, i32> {
         if shots == 0 {
             return std::collections::HashMap::new();
         }
@@ -2043,7 +2043,7 @@ impl QUnit {
         to_ret
     }
 
-    fn multi_shot_measure_mask(&mut self, q_powers: &[bitCapInt], shots: u32, shots_array: &mut [u64]) {
+    pub fn multi_shot_measure_mask(&mut self, q_powers: &[bitCapInt], shots: u32, shots_array: &mut [u64]) {
         if shots == 0 {
             return;
         }
@@ -2088,6 +2088,938 @@ impl QUnit {
                 shots_array[j] = *perm as u64;
                 j += 1;
             }
+        }
+    }
+
+    pub fn set_reg(&mut self, start: usize, length: usize, value: u64) {
+        self.m_reg(start, length);
+        for i in 0..length {
+            let i = i as u64;
+            let shard = &mut self.shards[i + start];
+            let bit = (value >> i) & 1;
+            let is_non_zero = bit != 0;
+            let phase = Complex::new(0.0, 0.0); // GetNonunitaryPhase() implementation not provided
+            shard.amp1 = if is_non_zero {
+                QEngineShard::new(shard.pauli_basis, Complex::zero(), phase)
+            } else {
+                QEngineShard::new(shard.pauli_basis, phase, Complex::zero())
+            };
+        }
+    }
+
+    fn either_i_swap(&mut self, qubit1: usize, qubit2: usize, is_inverse: bool) {
+        if qubit1 >= self.qubit_count {
+            panic!("QUnit::EitherISwap qubit index parameter must be within allocated qubit bounds!");
+        }
+        if qubit2 >= self.qubit_count {
+            panic!("QUnit::EitherISwap qubit index parameter must be within allocated qubit bounds!");
+        }
+        if qubit1 == qubit2 {
+            return;
+        }
+        let shard1 = &mut self.shards[qubit1];
+        let shard2 = &mut self.shards[qubit2];
+        let is_same_unit = shard1.pauli_basis == shard2.pauli_basis;
+        let are_clifford = shard1.pauli_basis == PauliBasis::PauliZ
+            && shard2.pauli_basis == PauliBasis::PauliZ;
+        if is_same_unit || are_clifford {
+            // Entangle() implementation not provided
+            if is_inverse {
+                // unit->IISwap(shard1.mapped, shard2.mapped) implementation not provided
+            } else {
+                // unit->ISwap(shard1.mapped, shard2.mapped) implementation not provided
+            }
+            shard1.make_dirty();
+            shard2.make_dirty();
+            if is_same_unit && !are_clifford {
+                self.try_separate(qubit1);
+                self.try_separate(qubit2);
+            }
+            return;
+        }
+        if is_inverse {
+            // QInterface::IISwap(qubit1, qubit2) implementation not provided
+        } else {
+            // QInterface::ISwap(qubit1, qubit2) implementation not provided
+        }
+    }
+
+    fn sqrt_swap(&mut self, qubit1: usize, qubit2: usize) {
+        if qubit1 >= self.qubit_count {
+            panic!("QUnit::SqrtSwap qubit index parameter must be within allocated qubit bounds!");
+        }
+        if qubit2 >= self.qubit_count {
+            panic!("QUnit::SqrtSwap qubit index parameter must be within allocated qubit bounds!");
+        }
+        if qubit1 == qubit2 {
+            return;
+        }
+        // RevertBasis2Qb(qubit1, ONLY_INVERT) implementation not provided
+        // RevertBasis2Qb(qubit2, ONLY_INVERT) implementation not provided
+        let shard1 = &mut self.shards[qubit1];
+        let shard2 = &mut self.shards[qubit2];
+        let is_same_unit = shard1.pauli_basis == shard2.pauli_basis;
+        // Entangle() implementation not provided
+        shard1.make_dirty();
+        shard2.make_dirty();
+        if is_same_unit {
+            self.try_separate(qubit1);
+            self.try_separate(qubit2);
+        }
+    }
+
+    fn i_sqrt_swap(&mut self, qubit1: usize, qubit2: usize) {
+        if qubit1 >= self.qubit_count {
+            panic!("QUnit::ISqrtSwap qubit index parameter must be within allocated qubit bounds!");
+        }
+        if qubit2 >= self.qubit_count {
+            panic!("QUnit::ISqrtSwap qubit index parameter must be within allocated qubit bounds!");
+        }
+        if qubit1 == qubit2 {
+            return;
+        }
+        // RevertBasis2Qb(qubit1, ONLY_INVERT) implementation not provided
+        // RevertBasis2Qb(qubit2, ONLY_INVERT) implementation not provided
+        let shard1 = &mut self.shards[qubit1];
+        let shard2 = &mut self.shards[qubit2];
+        let is_same_unit = shard1.pauli_basis == shard2.pauli_basis;
+        // Entangle() implementation not provided
+        shard1.make_dirty();
+        shard2.make_dirty();
+        if is_same_unit {
+            self.try_separate(qubit1);
+            self.try_separate(qubit2);
+        }
+    }
+
+    fn f_sim(&mut self, theta: f64, phi: f64, qubit1: usize, qubit2: usize) {
+        let controls = vec![qubit1];
+        let sin_theta = theta.sin();
+        if sin_theta * sin_theta <= f64::EPSILON {
+            // MCPhase(controls, ONE_CMPLX, exp(complex(ZERO_R1, (real1)phi)), qubit2) implementation not provided
+            return;
+        }
+        let exp_i_phi = Complex::new(0.0, phi).exp();
+        let was_same_unit = self.shards[qubit1].pauli_basis == self.shards[qubit2].pauli_basis
+            && (self.shards[qubit1].pauli_basis != PauliBasis::PauliZ
+                || !exp_i_phi.real.approx_eq(&1.0)
+                || !exp_i_phi.imag.approx_eq(&0.0));
+        let sin_theta_diff_neg = 1.0 + sin_theta;
+        if !was_same_unit && sin_theta_diff_neg * sin_theta_diff_neg <= f64::EPSILON {
+            self.i_swap(qubit1, qubit2);
+            // MCPhase(controls, ONE_CMPLX, exp_i_phi, qubit2) implementation not provided
+            return;
+        }
+        let sin_theta_diff_pos = 1.0 - sin_theta;
+        if !was_same_unit && sin_theta_diff_pos * sin_theta_diff_pos <= f64::EPSILON {
+            self.ii_swap(qubit1, qubit2);
+            // MCPhase(controls, ONE_CMPLX, exp_i_phi, qubit2) implementation not provided
+            return;
+        }
+        if qubit1 >= self.qubit_count {
+            panic!("QUnit::FSim qubit index parameter must be within allocated qubit bounds!");
+        }
+        if qubit2 >= self.qubit_count {
+            panic!("QUnit::FSim qubit index parameter must be within allocated qubit bounds!");
+        }
+        // RevertBasis2Qb(qubit1, ONLY_INVERT) implementation not provided
+        // RevertBasis2Qb(qubit2, ONLY_INVERT) implementation not provided
+        let shard1 = &mut self.shards[qubit1];
+        let shard2 = &mut self.shards[qubit2];
+        let is_same_unit = shard1.pauli_basis == shard2.pauli_basis;
+        // Entangle() implementation not provided
+        shard1.make_dirty();
+        shard2.make_dirty();
+        if is_same_unit && shard1.pauli_basis != PauliBasis::PauliZ {
+            self.try_separate(qubit1);
+            self.try_separate(qubit2);
+        }
+    }
+
+    fn uniformly_controlled_single_bit(
+        &mut self,
+        controls: &[usize],
+        qubit_index: usize,
+        mtrxs: &[Complex],
+        mtrx_skip_powers: &[u64],
+        mtrx_skip_value_mask: u64,
+    ) {
+        if controls.is_empty() {
+            self.mtrx(mtrxs, qubit_index);
+            return;
+        }
+        if qubit_index >= self.qubit_count {
+            panic!("QUnit::UniformlyControlledSingleBit qubitIndex is out-of-bounds!");
+        }
+        self.throw_if_qb_id_array_is_bad(controls);
+        let mut trimmed_controls = Vec::new();
+        let mut skip_powers = Vec::new();
+        let mut skip_value_mask = 0;
+        for (i, &control) in controls.iter().enumerate() {
+            if !self.check_bits_permutation(control) {
+                trimmed_controls.push(control);
+            } else {
+                skip_powers.push(1 << i);
+                if self.shards[control].pauli_basis == PauliBasis::PauliZ {
+                    skip_value_mask |= 1 << i;
+                }
+            }
+        }
+        if trimmed_controls.is_empty() {
+            let control_perm = self.get_cached_permutation(controls);
+            let mtrx = &mtrxs[(control_perm << 2)..((control_perm + 1) << 2)];
+            self.mtrx(mtrx, qubit_index);
+            return;
+        }
+        let mut bits = trimmed_controls.clone();
+        bits.push(qubit_index);
+        bits.sort_unstable();
+        let mut ebits = bits.iter().collect::<Vec<_>>();
+        let unit = self.entangle(&ebits);
+        let mapped_controls = trimmed_controls
+            .iter()
+            .map(|&control| self.shards[control].mapped)
+            .collect::<Vec<_>>();
+        unit.uniformly_controlled_single_bit(
+            &mapped_controls,
+            self.shards[qubit_index].mapped,
+            mtrxs,
+            &skip_powers,
+            skip_value_mask,
+        );
+        self.shards[qubit_index].make_dirty();
+        if !is_reactive_separate || freeze_basis2_qb {
+            return;
+        }
+        if bits.len() == 2 {
+            self.try_separate(bits[0], bits[1]);
+            return;
+        }
+        for i in 0..(bits.len() - 1) {
+            for j in (i + 1)..bits.len() {
+                self.try_separate(bits[i], bits[j]);
+            }
+        }
+    }
+
+    fn h(&mut self, target: usize) {
+        if target >= self.qubit_count {
+            panic!("QUnit::H qubit index parameter must be within allocated qubit bounds!");
+        }
+        let shard = &mut self.shards[target];
+        let is_clifford = false; // Implementation not provided
+        if is_clifford {
+            // RevertBasis1Qb(target) implementation not provided
+            // RevertBasis2Qb(target) implementation not provided
+        } else {
+            // RevertBasisY(target) implementation not provided
+            // CommuteH(target) implementation not provided
+        }
+        shard.pauli_basis = if shard.pauli_basis == PauliBasis::PauliZ {
+            PauliBasis::PauliX
+        } else {
+            PauliBasis::PauliZ
+        };
+        if is_clifford {
+            // RevertBasis1Qb(target) implementation not provided
+        }
+    }
+
+    fn s(&mut self, target: usize) {
+        if target >= self.qubit_count {
+            panic!("QUnit::S qubit index parameter must be within allocated qubit bounds!");
+        }
+        let shard = &mut self.shards[target];
+        let is_clifford = false; // Implementation not provided
+        if is_clifford {
+            // RevertBasis1Qb(target) implementation not provided
+            // RevertBasis2Qb(target) implementation not provided
+        } else {
+            shard.comm_phase(Complex::one(), Complex::i());
+        }
+        if shard.pauli_basis == PauliBasis::PauliY {
+            shard.pauli_basis = PauliBasis::PauliX;
+            self.x_base(target);
+            return;
+        }
+        if shard.pauli_basis == PauliBasis::PauliX {
+            shard.pauli_basis = PauliBasis::PauliY;
+            return;
+        }
+        if shard.unit.is_some() {
+            // shard.unit->S(shard.mapped) implementation not provided
+        }
+        shard.amp1 = Complex::i() * shard.amp1;
+    }
+
+    fn i_s(&mut self, target: usize) {
+        if target >= self.qubit_count {
+            panic!("QUnit::IS qubit index parameter must be within allocated qubit bounds!");
+        }
+        let shard = &mut self.shards[target];
+        let is_clifford = false; // Implementation not provided
+        if is_clifford {
+            // RevertBasis1Qb(target) implementation not provided
+            // RevertBasis2Qb(target) implementation not provided
+        } else {
+            shard.comm_phase(Complex::one(), -Complex::i());
+        }
+        if shard.pauli_basis == PauliBasis::PauliY {
+            shard.pauli_basis = PauliBasis::PauliX;
+            return;
+        }
+        if shard.pauli_basis == PauliBasis::PauliX {
+            shard.pauli_basis = PauliBasis::PauliY;
+            self.x_base(target);
+            return;
+        }
+        if shard.unit.is_some() {
+            // shard.unit->IS(shard.mapped) implementation not provided
+        }
+        shard.amp1 = -Complex::i() * shard.amp1;
+    }
+
+    fn x_base(&mut self, target: usize) {
+        if target >= self.qubit_count {
+            panic!("QUnit::XBase qubit index parameter must be within allocated qubit bounds!");
+        }
+        let shard = &mut self.shards[target];
+        if shard.unit.is_some() {
+            // shard.unit->X(shard.mapped) implementation not provided
+        }
+        std::mem::swap(&mut shard.amp0, &mut shard.amp1);
+    }
+
+    fn y_base(&mut self, target: usize) {
+        if target >= self.qubit_count {
+            panic!("QUnit::YBase qubit index parameter must be within allocated qubit bounds!");
+        }
+        let shard = &mut self.shards[target];
+        if shard.unit.is_some() {
+            // shard.unit->Y(shard.mapped) implementation not provided
+        }
+        let y0 = shard.amp0;
+        shard.amp0 = -Complex::i() * shard.amp1;
+        shard.amp1 = Complex::i() * y0;
+    }
+
+    fn z_base(&mut self, target: usize) {
+        if target >= self.qubit_count {
+            panic!("QUnit::ZBase qubit index parameter must be within allocated qubit bounds!");
+        }
+        let shard = &mut self.shards[target];
+        if shard.unit.is_some() {
+            // shard.unit->Z(shard.mapped) implementation not provided
+        }
+        shard.amp1 = -shard.amp1;
+    }
+
+    pub fn phase(&self, top_left: Complex, bottom_right: Complex, target: usize) -> Result<(), Box<dyn Error>> {
+        if target >= self.qubit_count {
+            return Err("QUnit::Phase qubit index parameter must be within allocated qubit bounds!".into());
+        }
+        if self.rand_global_phase || is_1_cmplx(top_left) {
+            if is_norm_0(top_left - bottom_right) {
+                return Ok(());
+            }
+            if is_norm_0((i_cmplx() * top_left) - bottom_right) {
+                self.s(target)?;
+                return Ok(());
+            }
+            if is_norm_0((i_cmplx() * top_left) + bottom_right) {
+                self.is(target)?;
+                return Ok(());
+            }
+        }
+        let shard = &mut self.shards[target];
+        let is_clifford = self.use_t_gadget && self.engines[0] == QINTERFACE_STABILIZER_HYBRID && (shard.unit.is_none() || shard.unit.is_clifford());
+        if is_clifford {
+            self.revert_basis_1_qb(target);
+            self.revert_basis_2_qb(target);
+        } else {
+            shard.commute_phase(top_left, bottom_right);
+        }
+        if shard.pauli_basis == PauliZ {
+            if let Some(unit) = &mut shard.unit {
+                unit.phase(top_left, bottom_right, shard.mapped)?;
+            }
+            shard.amp0 *= top_left;
+            shard.amp1 *= bottom_right;
+            return Ok(());
+        }
+        let mut mtrx = [ZERO_CMPLX, ZERO_CMPLX, ZERO_CMPLX, ZERO_CMPLX];
+        self.transform_phase(top_left, bottom_right, &mut mtrx);
+        if let Some(unit) = &mut shard.unit {
+            unit.mtrx(&mtrx, shard.mapped)?;
+        }
+        if self.dirty(shard) {
+            shard.is_prob_dirty |= !is_phase_or_invert(&mtrx);
+        }
+        let y0 = shard.amp0;
+        shard.amp0 = (mtrx[0] * y0) + (mtrx[1] * shard.amp1);
+        shard.amp1 = (mtrx[2] * y0) + (mtrx[3] * shard.amp1);
+        self.clamp_shard(target);
+        Ok(())
+    }
+
+    pub fn invert(&self, top_right: Complex, bottom_left: Complex, target: usize) -> Result<(), Box<dyn Error>> {
+        if target >= self.qubit_count {
+            return Err("QUnit::Invert qubit index parameter must be within allocated qubit bounds!".into());
+        }
+        let shard = &mut self.shards[target];
+        let is_clifford = self.use_t_gadget && self.engines[0] == QINTERFACE_STABILIZER_HYBRID && (shard.unit.is_none() || shard.unit.is_clifford());
+        if is_clifford {
+            self.revert_basis_1_qb(target);
+            self.revert_basis_2_qb(target);
+        } else {
+            shard.flip_phase_anti();
+            shard.commute_phase(top_right, bottom_left);
+        }
+        if shard.pauli_basis == PauliZ {
+            if let Some(unit) = &mut shard.unit {
+                unit.invert(top_right, bottom_left, shard.mapped)?;
+            }
+            let temp_amp1 = bottom_left * shard.amp0;
+            shard.amp0 = top_right * shard.amp1;
+            shard.amp1 = temp_amp1;
+            return Ok(());
+        }
+        let mut mtrx = [ZERO_CMPLX, ZERO_CMPLX, ZERO_CMPLX, ZERO_CMPLX];
+        if shard.pauli_basis == PauliX {
+            self.transform_x_invert(top_right, bottom_left, &mut mtrx);
+        } else {
+            self.transform_y_invert(top_right, bottom_left, &mut mtrx);
+        }
+        if let Some(unit) = &mut shard.unit {
+            unit.mtrx(&mtrx, shard.mapped)?;
+        }
+        if self.dirty(shard) {
+            shard.is_prob_dirty |= !is_phase_or_invert(&mtrx);
+        }
+        let y0 = shard.amp0;
+        shard.amp0 = (mtrx[0] * y0) + (mtrx[1] * shard.amp1);
+        shard.amp1 = (mtrx[2] * y0) + (mtrx[3] * shard.amp1);
+        self.clamp_shard(target);
+        Ok(())
+    }
+
+    pub fn uc_phase(&self, l_controls: &Vec<bitLenInt>, top_left: complex, bottom_right: complex, target: bitLenInt, control_perm: bitCapInt) {
+        throw_if_qb_id_array_is_bad(
+            l_controls,
+            self.qubit_count,
+            "QUnit::UCPhase parameter controls array values must be within allocated qubit bounds!",
+        );
+        if is_1_cmplx(top_left) && is_1_cmplx(bottom_right) {
+            return;
+        }
+        let mut control_vec: Vec<bitLenInt> = Vec::new();
+        if self.trim_controls(l_controls, &mut control_vec, &mut control_perm) {
+            return;
+        }
+        if control_vec.is_empty() {
+            self.phase(top_left, bottom_right, target);
+            return;
+        }
+        if control_vec.len() == 1 && is_norm_0(top_left - bottom_right) {
+            if bi_compare_0(control_perm) != 0 {
+                self.phase(ONE_CMPLX, bottom_right, control_vec[0]);
+            } else {
+                self.phase(top_left, ONE_CMPLX, control_vec[0]);
+            }
+            return;
+        }
+        if target >= self.qubit_count {
+            panic!("QUnit::UCPhase qubit index parameter must be within allocated qubit bounds!");
+        }
+        if !self.freeze_basis2_qb && control_vec.len() == 1 {
+            let control = control_vec[0];
+            let c_shard = &mut self.shards[control];
+            let t_shard = &mut self.shards[target];
+            self.revert_basis2_qb(control, ONLY_INVERT, ONLY_TARGETS);
+            let is_nonzero_ctrl_perm = bi_compare_0(control_perm) != 0;
+            if is_nonzero_ctrl_perm {
+                self.revert_basis2_qb(target, ONLY_INVERT, ONLY_TARGETS, ONLY_ANTI);
+                self.revert_basis2_qb(target, ONLY_INVERT, ONLY_TARGETS, ONLY_CTRL, Vec::new(), vec![control]);
+            } else {
+                self.revert_basis2_qb(target, ONLY_INVERT, ONLY_TARGETS, ONLY_CTRL);
+                self.revert_basis2_qb(target, ONLY_INVERT, ONLY_TARGETS, ONLY_ANTI, Vec::new(), vec![control]);
+            }
+            if !self.is_same_unit(c_shard, t_shard)
+                && (!self.are_clifford(c_shard, t_shard)
+                    || !((self.is_same(ONE_CMPLX, top_left) || self.is_same(-ONE_CMPLX, top_left))
+                        && (self.is_same(ONE_CMPLX, bottom_right) || self.is_same(-ONE_CMPLX, bottom_right))))
+            {
+                if is_nonzero_ctrl_perm {
+                    t_shard.add_phase_angles(c_shard, top_left, bottom_right);
+                    self.optimize_pair_buffers(control, target, false);
+                } else {
+                    t_shard.add_anti_phase_angles(c_shard, bottom_right, top_left);
+                    self.optimize_pair_buffers(control, target, true);
+                }
+                return;
+            }
+        }
+        self.ctrled_phase_invert_wrap(self.uc_phase(CTRL_P_ARGS), self.uc_mtrx(CTRL_GEN_ARGS), false, top_left, bottom_right);
+    }
+
+    pub fn uc_invert(&self, l_controls: &Vec<bitLenInt>, top_right: complex, bottom_left: complex, target: bitLenInt, control_perm: bitCapInt) {
+        throw_if_qb_id_array_is_bad(
+            l_controls,
+            self.qubit_count,
+            "QUnit::UCInvert parameter controls array values must be within allocated qubit bounds!",
+        );
+        if target >= self.qubit_count {
+            panic!("QUnit::UCInvert qubit index parameter must be within allocated qubit bounds!");
+        }
+        if is_1_cmplx(top_right) && is_1_cmplx(bottom_left) {
+            if self.cached_plus(target) {
+                return;
+            }
+        }
+        let mut control_vec: Vec<bitLenInt> = Vec::new();
+        if trim_controls(l_controls, &mut control_vec, &mut control_perm) {
+            return;
+        }
+        if control_vec.is_empty() {
+            self.invert(top_right, bottom_left, target);
+            return;
+        }
+        if !self.freeze_basis2_qb && control_vec.len() == 1 {
+            let control = control_vec[0];
+            let c_shard = &mut self.shards[control];
+            let t_shard = &mut self.shards[target];
+            self.revert_basis2_qb(control, ONLY_INVERT, ONLY_TARGETS);
+            let is_nonzero_ctrl_perm = bi_compare_0(control_perm) != 0;
+            if is_nonzero_ctrl_perm {
+                self.revert_basis2_qb(target, INVERT_AND_PHASE, CONTROLS_AND_TARGETS, ONLY_ANTI);
+                self.revert_basis2_qb(target, INVERT_AND_PHASE, CONTROLS_AND_TARGETS, ONLY_CTRL, Vec::new(), vec![control]);
+            } else {
+                self.revert_basis2_qb(target, INVERT_AND_PHASE, CONTROLS_AND_TARGETS, ONLY_CTRL);
+                self.revert_basis2_qb(target, INVERT_AND_PHASE, CONTROLS_AND_TARGETS, ONLY_ANTI, Vec::new(), vec![control]);
+            }
+            if !self.is_same_unit(c_shard, t_shard)
+                && (!self.are_clifford(c_shard, t_shard)
+                    || !(((self.is_same(ONE_CMPLX, top_right) || self.is_same(-ONE_CMPLX, top_right))
+                        && (self.is_same(ONE_CMPLX, bottom_left) || self.is_same(-ONE_CMPLX, bottom_left)))
+                        || ((self.is_same(I_CMPLX, top_right) || self.is_same(-I_CMPLX, top_right))
+                            && (self.is_same(I_CMPLX, bottom_left) || self.is_same(-I_CMPLX, bottom_left)))))
+            {
+                if is_nonzero_ctrl_perm {
+                    t_shard.add_inversion_angles(c_shard, top_right, bottom_left);
+                    self.optimize_pair_buffers(control, target, false);
+                } else {
+                    t_shard.add_anti_inversion_angles(c_shard, bottom_left, top_right);
+                    self.optimize_pair_buffers(control, target, true);
+                }
+                return;
+            }
+        }
+        self.ctrled_phase_invert_wrap(self.uc_invert(CTRL_I_ARGS), self.uc_mtrx(CTRL_GEN_ARGS), true, top_right, bottom_left);
+    }
+
+    pub fn mtrx(&mut self, mtrx: &[complex], target: usize) {
+        let shard = &mut self.shards[target];
+        if is_norm_0(mtrx[1]) && is_norm_0(mtrx[2]) {
+            self.phase(mtrx[0], mtrx[3], target);
+            return;
+        }
+        if is_norm_0(mtrx[0]) && is_norm_0(mtrx[3]) {
+            self.invert(mtrx[1], mtrx[2], target);
+            return;
+        }
+        if (self.rand_global_phase || is_same(mtrx[0], complex::new(SQRT1_2_R1, 0.0))) && is_same(mtrx[0], mtrx[1]) &&
+            is_same(mtrx[0], mtrx[2]) && is_same(mtrx[0], -mtrx[3]) {
+            self.h(target);
+            return;
+        }
+        if (self.rand_global_phase || is_same(mtrx[0], complex::new(SQRT1_2_R1, 0.0))) && is_same(mtrx[0], mtrx[1]) &&
+            is_same(mtrx[0], -I_CMPLX * mtrx[2]) && is_same(mtrx[0], I_CMPLX * mtrx[3]) {
+            self.h(target);
+            self.s(target);
+            return;
+        }
+        if (self.rand_global_phase || is_same(mtrx[0], complex::new(SQRT1_2_R1, 0.0))) && is_same(mtrx[0], I_CMPLX * mtrx[1]) &&
+            is_same(mtrx[0], mtrx[2]) && is_same(mtrx[0], -I_CMPLX * mtrx[3]) {
+            self.is_gate(target);
+            self.h(target);
+            return;
+        }
+        if target >= self.qubit_count {
+            panic!("QUnit::Mtrx qubit index parameter must be within allocated qubit bounds!");
+        }
+        self.revert_basis_2_qb(target);
+        let mut trns_mtrx = [complex::new(0.0, 0.0); 4];
+        if shard.pauli_basis == PauliY {
+            self.transform_y2x2(mtrx, &mut trns_mtrx);
+        } else if shard.pauli_basis == PauliX {
+            self.transform_x2x2(mtrx, &mut trns_mtrx);
+        } else {
+            trns_mtrx.copy_from_slice(mtrx);
+        }
+        if let Some(unit) = &mut shard.unit {
+            unit.mtrx(&trns_mtrx, shard.mapped);
+        }
+        if dirty(shard) {
+            shard.is_prob_dirty |= !is_phase_or_invert(&trns_mtrx);
+        }
+        let y0 = shard.amp0;
+        shard.amp0 = (trns_mtrx[0] * y0) + (trns_mtrx[1] * shard.amp1);
+        shard.amp1 = (trns_mtrx[2] * y0) + (trns_mtrx[3] * shard.amp1);
+        self.clamp_shard(target);
+    }
+
+    pub fn uc_mtrx(&mut self, controls: &[bit_len_int], mtrx: &[complex], target: usize, control_perm: bit_cap_int) {
+        if is_norm_0(mtrx[1]) && is_norm_0(mtrx[2]) {
+            self.uc_phase(controls, mtrx[0], mtrx[3], target, control_perm);
+            return;
+        }
+        if is_norm_0(mtrx[0]) && is_norm_0(mtrx[3]) {
+            self.uc_invert(controls, mtrx[1], mtrx[2], target, control_perm);
+            return;
+        }
+        self.throw_if_qb_id_array_is_bad(
+            controls, self.qubit_count, "QUnit::UCMtrx parameter controls array values must be within allocated qubit bounds!");
+        let mut control_vec = Vec::new();
+        if self.trim_controls(controls, &mut control_vec, &mut control_perm) {
+            return;
+        }
+        if control_vec.is_empty() {
+            self.mtrx(mtrx, target);
+            return;
+        }
+        if target >= self.qubit_count {
+            panic!("QUnit::MCMtrx qubit index parameter must be within allocated qubit bounds!");
+        }
+        self.ctrled_gen_wrap(self.uc_mtrx(CTRL_GEN_ARGS));
+    }
+
+    fn trim_controls(&self, controls: &Vec<bitLenInt>, control_vec: &mut Vec<bitLenInt>, perm: &mut bitCapInt) -> bool {
+        if controls.is_empty() {
+            return false;
+        }
+
+        for i in 0..controls.len() {
+            let anti = !bi_and_1(*perm >> i);
+            if (anti && CACHED_ONE(controls[i])) || (!anti && CACHED_ZERO(controls[i])) {
+                return true;
+            }
+        }
+
+        for i in 0..controls.len() {
+            let shard = &mut self.shards[controls[i]];
+            if shard.pauli_basis != PauliZ || shard.is_invert_target() {
+                continue;
+            }
+            self.prob_base(controls[i]);
+
+            if IS_NORM_0(shard.amp1) {
+                self.flush_0_eigenstate(controls[i]);
+                if bi_and_1(*perm >> i) {
+                    return true;
+                }
+            } else if IS_NORM_0(shard.amp0) {
+                self.flush_1_eigenstate(controls[i]);
+                if !bi_and_1(*perm >> i) {
+                    return true;
+                }
+            }
+        }
+
+        for i in 0..controls.len() {
+            let shard = &mut self.shards[controls[i]];
+            if shard.pauli_basis == PauliZ || shard.is_invert_target() {
+                continue;
+            }
+            self.revert_basis_1_qb(controls[i]);
+            self.prob_base(controls[i]);
+
+            if IS_NORM_0(shard.amp1) {
+                self.flush_0_eigenstate(controls[i]);
+                if bi_and_1(*perm >> i) {
+                    return true;
+                }
+            } else if IS_NORM_0(shard.amp0) {
+                self.flush_1_eigenstate(controls[i]);
+                if !bi_and_1(*perm >> i) {
+                    return true;
+                }
+            }
+        }
+
+        let mut out_perm = ZERO_BCI;
+        for i in 0..controls.len() {
+            let shard = &mut self.shards[controls[i]];
+            self.to_perm_basis_prob(controls[i]);
+            self.prob_base(controls[i]);
+            let mut is_eigenstate = false;
+
+            if IS_NORM_0(shard.amp1) {
+                self.flush_0_eigenstate(controls[i]);
+                if bi_and_1(*perm >> i) {
+                    return true;
+                }
+
+                is_eigenstate = true;
+            } else if IS_NORM_0(shard.amp0) {
+                self.flush_1_eigenstate(controls[i]);
+                if !bi_and_1(*perm >> i) {
+                    return true;
+                }
+
+                is_eigenstate = true;
+            }
+            if !is_eigenstate {
+                bi_or_ip(&mut out_perm, bi_and_1(*perm >> i) << control_vec.len());
+                control_vec.push(controls[i]);
+            }
+        }
+        *perm = out_perm;
+        false
+    }
+
+    fn apply_either_controlled<CF: Fn(QInterfacePtr, &Vec<bitLenInt>)>(
+        &self,
+        control_vec: &Vec<bitLenInt>,
+        targets: &Vec<bitLenInt>,
+        cfn: CF,
+        is_phase: bool,
+    ) {
+        for i in 0..control_vec.len() {
+            self.to_perm_basis_prob(control_vec[i]);
+        }
+        if targets.len() > 1 {
+            for i in 0..targets.len() {
+                self.to_perm_basis(targets[i]);
+            }
+        } else if is_phase {
+            self.revert_basis_2_qb(targets[0], ONLY_INVERT, ONLY_TARGETS);
+        } else {
+            self.revert_basis_2_qb(targets[0]);
+        }
+        let mut all_bits = Vec::with_capacity(control_vec.len() + targets.len());
+        all_bits.extend_from_slice(control_vec);
+        all_bits.extend_from_slice(targets);
+        all_bits.sort();
+        let mut all_bits_mapped = all_bits.clone();
+        let mut ebits = Vec::with_capacity(all_bits_mapped.len());
+        for i in 0..all_bits_mapped.len() {
+            ebits.push(&mut all_bits_mapped[i]);
+        }
+        let unit = self.entangle_in_current_basis(ebits.as_mut_slice());
+        for i in 0..control_vec.len() {
+            let c = &mut control_vec[i];
+            self.shards[*c].is_phase_dirty = true;
+            *c = self.shards[*c].mapped;
+        }
+        for i in 0..targets.len() {
+            let shard = &mut self.shards[targets[i]];
+            shard.is_phase_dirty = true;
+            shard.is_prob_dirty |= shard.pauli_basis != PauliZ || !is_phase;
+        }
+
+        cfn(unit, control_vec);
+
+        if !self.is_reactive_separate || self.freeze_basis_2_qb {
+            return;
+        }
+
+        if all_bits.len() == 2 {
+            self.try_separate(all_bits[0], all_bits[1]);
+            return;
+        }
+
+        for i in 0..(all_bits.len() - 1) {
+            for j in (i + 1)..all_bits.len() {
+                self.try_separate(all_bits[i], all_bits[j]);
+            }
+        }
+    }
+
+    fn convert_z_to_x(&mut self, i: bitLenInt) {
+        let shard = &mut self.shards[i];
+
+        shard.pauli_basis = if shard.pauli_basis == PauliX {
+            PauliZ
+        } else {
+            PauliX
+        };
+        if let Some(unit) = &mut shard.unit {
+            unit.h(shard.mapped);
+        }
+        if shard.is_phase_dirty || shard.is_prob_dirty {
+            shard.is_prob_dirty = true;
+            return;
+        }
+        let temp_amp1 = SQRT1_2_R1 * (shard.amp0 - shard.amp1);
+        shard.amp0 = SQRT1_2_R1 * (shard.amp0 + shard.amp1);
+        shard.amp1 = temp_amp1;
+        self.clamp_shard(i);
+    }
+
+    fn convert_x_to_y(&mut self, i: bitLenInt) {
+        let shard = &mut self.shards[i];
+        shard.pauli_basis = PauliY;
+        let mtrx = [
+            ((ONE_R1 / 2) * (ONE_CMPLX - I_CMPLX)),
+            ((ONE_R1 / 2) * (ONE_CMPLX + I_CMPLX)),
+            ((ONE_R1 / 2) * (ONE_CMPLX + I_CMPLX)),
+            ((ONE_R1 / 2) * (ONE_CMPLX - I_CMPLX)),
+        ];
+        if let Some(unit) = &mut shard.unit {
+            unit.mtrx(mtrx, shard.mapped);
+        }
+        if shard.is_phase_dirty || shard.is_prob_dirty {
+            shard.is_prob_dirty = true;
+            return;
+        }
+        let y0 = shard.amp0;
+        shard.amp0 = (mtrx[0] * y0) + (mtrx[1] * shard.amp1);
+        shard.amp1 = (mtrx[2] * y0) + (mtrx[3] * shard.amp1);
+        self.clamp_shard(i);
+    }
+
+    fn convert_y_to_z(&mut self, i: bitLenInt) {
+        let shard = &mut self.shards[i];
+        shard.pauli_basis = PauliZ;
+        let mtrx = [
+            complex(SQRT1_2_R1, ZERO_R1),
+            complex(SQRT1_2_R1, ZERO_R1),
+            complex(ZERO_R1, SQRT1_2_R1),
+            complex(ZERO_R1, -SQRT1_2_R1),
+        ];
+        if let Some(unit) = &mut shard.unit {
+            unit.mtrx(mtrx, shard.mapped);
+        }
+        if shard.is_phase_dirty || shard.is_prob_dirty {
+            shard.is_prob_dirty = true;
+            return;
+        }
+        let y0 = shard.amp0;
+        shard.amp0 = (mtrx[0] * y0) + (mtrx[1] * shard.amp1);
+        shard.amp1 = (mtrx[2] * y0) + (mtrx[3] * shard.amp1);
+        self.clamp_shard(i);
+    }
+
+    fn convert_z_to_y(&mut self, i: bitLenInt) {
+        let shard = &mut self.shards[i];
+        shard.pauli_basis = PauliY;
+        let mtrx = [
+            complex(SQRT1_2_R1, ZERO_R1),
+            complex(ZERO_R1, -SQRT1_2_R1),
+            complex(SQRT1_2_R1, ZERO_R1),
+            complex(ZERO_R1, SQRT1_2_R1),
+        ];
+        if let Some(unit) = &mut shard.unit {
+            unit.mtrx(mtrx, shard.mapped);
+        }
+        if shard.is_phase_dirty || shard.is_prob_dirty {
+            shard.is_prob_dirty = true;
+            return;
+        }
+        let y0 = shard.amp0;
+        shard.amp0 = (mtrx[0] * y0) + (mtrx[1] * shard.amp1);
+        shard.amp1 = (mtrx[2] * y0) + (mtrx[3] * shard.amp1);
+        self.clamp_shard(i);
+    }
+
+    fn shard_ai(&mut self, qubit: bitLenInt, azimuth: real1_f, inclination: real1_f) {
+        let cosine_a = (cos(azimuth) as real1);
+        let sine_a = (sin(azimuth) as real1);
+        let cosine_i = (cos(inclination / 2) as real1);
+        let sine_i = (sin(inclination / 2) as real1);
+        let exp_a = complex(cosine_a, sine_a);
+        let exp_neg_a = complex(cosine_a, -sine_a);
+        let mtrx = [
+            cosine_i,
+            -exp_neg_a * sine_i,
+            exp_a * sine_i,
+            cosine_i,
+        ];
+        let shard = &mut self.shards[qubit];
+        let y0 = shard.amp0;
+        shard.amp0 = (mtrx[0] * y0) + (mtrx[1] * shard.amp1);
+        shard.amp1 = (mtrx[2] * y0) + (mtrx[3] * shard.amp1);
+        self.clamp_shard(qubit);
+    }
+
+    fn flush_0_eigenstate(&mut self, i: bitLenInt) {
+        self.shards[i].dump_control_of();
+        if self.rand_global_phase {
+            self.shards[i].dump_same_phase_anti_control_of();
+        }
+        self.revert_basis_2_qb(i, INVERT_AND_PHASE, ONLY_CONTROLS, ONLY_ANTI);
+    }
+
+    fn flush_1_eigenstate(&mut self, i: bitLenInt) {
+        self.shards[i].dump_anti_control_of();
+        if self.rand_global_phase {
+            self.shards[i].dump_same_phase_control_of();
+        }
+        self.revert_basis_2_qb(i, INVERT_AND_PHASE, ONLY_CONTROLS, ONLY_CTRL);
+    }
+
+    fn to_perm_basis(&mut self, i: bitLenInt) {
+        self.revert_basis_1_qb(i);
+        self.revert_basis_2_qb(i);
+    }
+
+    fn to_perm_basis_range(&mut self, start: bitLenInt, length: bitLenInt) {
+        for i in 0..length {
+            self.revert_basis_1_qb(start + i);
+        }
+        for i in 0..length {
+            self.revert_basis_2_qb(start + i);
+        }
+    }
+
+    fn to_perm_basis_prob(&mut self, i: bitLenInt) {
+        self.revert_basis_1_qb(i);
+        self.revert_basis_2_qb(i, ONLY_INVERT, ONLY_TARGETS);
+    }
+
+    fn to_perm_basis_prob_range(&mut self, start: bitLenInt, length: bitLenInt) {
+        for i in 0..length {
+            self.revert_basis_1_qb(start + i);
+        }
+        for i in 0..length {
+            self.revert_basis_2_qb(start + i, ONLY_INVERT, ONLY_TARGETS);
+        }
+    }
+
+    fn to_perm_basis_measure(&mut self, i: bitLenInt) {
+        self.revert_basis_1_qb(i);
+        self.revert_basis_2_qb(i, ONLY_INVERT);
+        self.revert_basis_2_qb(i, ONLY_PHASE, ONLY_CONTROLS);
+        self.shards[i].dump_multi_bit();
+    }
+
+    fn to_perm_basis_measure_range(&mut self, start: bitLenInt, length: bitLenInt) {
+        if start == 0 && length == self.qubit_count {
+            self.to_perm_basis_all_measure();
+            return;
+        }
+        let mut except_bits = HashSet::new();
+        for i in 0..length {
+            except_bits.insert(start + i);
+        }
+        for i in 0..length {
+            self.revert_basis_1_qb(start + i);
+        }
+        for i in 0..length {
+            self.revert_basis_2_qb(start + i, ONLY_INVERT);
+            self.revert_basis_2_qb(start + i, ONLY_PHASE, ONLY_CONTROLS, CTRL_AND_ANTI, except_bits);
+            self.shards[start + i].dump_multi_bit();
+        }
+    }
+
+    fn to_perm_basis_all_measure(&mut self) {
+        for i in 0..self.qubit_count {
+            self.revert_basis_1_qb(i);
+        }
+        for i in 0..self.qubit_count {
+            self.shards[i].clear_invert_phase();
+            self.revert_basis_2_qb(i, ONLY_INVERT);
+            self.shards[i].dump_multi_bit();
         }
     }
 }
